@@ -43,7 +43,7 @@ export function applyIcons(root = document) {
 
 export function injectIconStyles() {
   const st = document.createElement('style');
-  st.textContent = `.ic-coin{background-image:url("${svgUrl('coin')}")}.ic-gem{background-image:url("${svgUrl('gem')}")}`;
+  st.textContent = `.ic-coin{background-image:url("${svgUrl('coin')}")}.ic-gem{background-image:url("${svgUrl('gem')}")}.ic-bolt{background-image:url("${svgUrl('bolt')}")}.ic-lock{background-image:url("${svgUrl('lock')}")}`;
   document.head.appendChild(st);
 }
 

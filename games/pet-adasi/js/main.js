@@ -3,6 +3,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { World, heightAt, zoneAt, gateX, PLAZA } from './world.js';
 import { FX, Drops, Overlay } from './fx.js';
@@ -16,8 +17,8 @@ import { Audio } from './audio.js';
 import { loadState, saveState, clearState, defaultState } from './save.js';
 import { petThumb, setPetThumbRenderer, createPetObject } from './petModels.js';
 import { injectIconStyles, icon, ICONS, applyIcons } from './icons.js';
-import { EGGS, GOLD_EGG, ZONES, ZONE_W, UPGRADES, SPECIES, RARITIES, PITY_EGGS, PITY_LEG, GOLDEN_CHANCE, MERGE_COUNT, VARIANTS, REBIRTH_BASE, findPetDef, petPower, petLevel, fmt } from './data.js';
-import { M, part, merge, normalizeMaterials } from './geo.js';
+import { EGGS, GOLD_EGG, ZONES, ZONE_W, ZONE_HP, ZONE_REWARD, BREAKABLES, UPGRADES, SPECIES, RARITIES, PITY_EGGS, PITY_LEG, GOLDEN_CHANCE, MERGE_COUNT, VARIANTS, REBIRTH_BASE, findPetDef, petPower, petLevel, fmt } from './data.js';
+import { M, part, merge, normalizeMaterials, dropEnvOnMatte, setMatteEnv } from './geo.js';
 import { getEggGeometry, makeEggMaterial } from './eggs.js';
 
 injectIconStyles();
@@ -32,9 +33,10 @@ const dbgVal = (k) => {
   return d && d.includes(':') ? d.split(':')[1] : null;
 };
 
-const events = [{ t: Math.round(performance.now()), type: 'boot', data: { phase: 'module' } }];
+const events = [{ t: Math.round(performance.now()), g: 0, type: 'boot', data: { phase: 'module' } }];
+let eventGameT = 0;
 function logEvent(type, data) {
-  events.push({ t: Math.round(performance.now()), type, data });
+  events.push({ t: Math.round(performance.now()), g: Math.round(eventGameT * 1000), type, data });
   if (events.length > 3000) events.splice(0, events.length - 3000);
 }
 
@@ -128,7 +130,7 @@ const G = {
   audio,
   paused: false,
   maxSlots: () => 3 + state.up.slots,
-  coinMult: () => (1 + state.up.coinMult * 0.3) * (1 + (state.rebirths || 0)) * (state.zones <= 1 && !state.rebirths ? 2 : 1),
+  coinMult: () => (1 + state.up.coinMult * 0.3) * (1 + (state.rebirths || 0)),
   powerOf: (p) => petPower(findPetDef(p.sp).entry, p.v, p.xp || 0),
   onPanel(open) {
     input.enabled = !open;
@@ -139,6 +141,7 @@ const G = {
 
 const breakables = new Breakables(scene, world, fx, drops, overlay, audio, {
   coinMult: G.coinMult,
+  lockedNeed: (b) => (canBreak(b) ? 0 : needPower(b)),
   onBreak(b, value) {
     state.stats.broken++;
     dirty = true;
@@ -154,7 +157,7 @@ const ui = new UI(G);
 const hatch = new Hatch(renderer, envTex, audio, ui);
 G.hatch = hatch;
 const input = new Input(canvas, document.getElementById('joy'));
-input.onAction = () => input.enabled && mode === 'play' && ui.tryPromptAction();
+input.onAction = () => input.enabled && mode === 'play' && !hatch.active && (ui.tryPromptAction() || actionPile());
 let lastBuy = 0;
 function buyReady() {
   const now = performance.now();
@@ -163,7 +166,8 @@ function buyReady() {
   return true;
 }
 
-const rt = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, { type: THREE.HalfFloatType, samples: dbg('nomsaa') ? 0 : window.innerWidth * window.innerHeight * Math.min(2, window.devicePixelRatio || 1) ** 2 > 1500000 ? 2 : 4 });
+const msaa = window.innerWidth * window.innerHeight * Math.min(2, window.devicePixelRatio || 1) ** 2 > 1500000 ? 2 : 4;
+const rt = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, { type: THREE.HalfFloatType, samples: dbg('nomsaa') ? 0 : msaa });
 const composer = new EffectComposer(renderer, rt);
 const renderPass = new RenderPass(scene, camera);
 composer.addPass(renderPass);
@@ -179,17 +183,28 @@ composer.addPass(hatchPass);
 const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.35, 0.4, 1.6);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
+const fxaa = new FXAAPass();
+fxaa.enabled = false;
+composer.addPass(fxaa);
 
 let quality = state.settings.quality;
 let autoStep = 0;
-const perf = { median: 0, samples: [], windowT: 0, steps: [], loadGaps: [] };
+const perf = { median: 0, samples: [], windowT: 0, steps: [], loadGaps: [], cpuUpdate: 0, cpuRender: 0 };
 function applyQuality() {
   const high = quality === 'high';
   const lowest = !high || autoStep >= 2;
-  const pr = Math.min(window.devicePixelRatio || 1, !high ? 1 : autoStep >= 1 ? 1.25 : 2, lowest ? Math.sqrt(1100000 / (window.innerWidth * window.innerHeight)) : 2);
+  const pr = Math.min(window.devicePixelRatio || 1, !high ? 1 : autoStep >= 1 ? 1.25 : 2, lowest ? Math.sqrt((autoStep >= 3 ? 850000 : 1100000) / (window.innerWidth * window.innerHeight)) : 2);
   renderer.setPixelRatio(pr);
   composer.setPixelRatio(pr);
   bloom.enabled = high && autoStep < 2 && !dbg('nobloom');
+  const samples = high && autoStep < 3 && !dbg('nomsaa') ? msaa : 0;
+  for (const t of [composer.renderTarget1, composer.renderTarget2]) {
+    if (t.samples !== samples) {
+      t.samples = samples;
+      t.dispose();
+    }
+  }
+  fxaa.enabled = samples === 0;
   const ms = high && autoStep === 0 ? 2048 : 1024;
   sun.shadow.mapSize.set(ms, ms);
   if (sun.shadow.map) {
@@ -786,16 +801,41 @@ function updateGrind(dt, target) {
 
 function grindGoal() {
   const b = grind.b;
-  if (!grind.on || !b || !b.alive) return null;
+  if (!grind.on || !b || !b.alive || !canBreak(b)) return null;
   const big = b.type === 'diamond';
   return { type: 'break', key: 'break', ic: ICONS[big || b.type === 'crystal' ? 'gem' : 'coin'], text: b.def.name, cur: b.maxHp - b.hp, max: b.maxHp, num: `+<span class="ic-coin"></span>${fmt(Math.round(b.coins * G.coinMult()))}`, pos: { x: b.x, y: b.y + (big ? 6.4 : 4) * b.scale, z: b.z } };
 }
 
+function pileRate() {
+  const z = maxZone();
+  const d = BREAKABLES.coins;
+  return ((squad.totalPower() / 0.8) * d.coins * ZONE_REWARD[z] * G.coinMult() * 0.5) / (d.hp * ZONE_HP[z]);
+}
+
+function goalNear(g) {
+  if (!g || !(g.max > 0)) return false;
+  return (g.max - g.cur) / Math.max(incomeRate(), pileRate()) <= 15;
+}
+
+let goalIsNear = false;
 function nextGoal() {
   const g = baseGoal();
-  if (g.cur >= g.max && g.max > 0) return g;
+  goalIsNear = goalNear(g);
+  if (goalIsNear) return g;
   return grindGoal() || g;
 }
+
+const BREAK_SECONDS = 8;
+function needPower(b) {
+  return Math.max(1, Math.ceil((b.hp * 0.8) / BREAK_SECONDS));
+}
+function canBreak(b) {
+  return squad.totalPower() >= needPower(b);
+}
+function canPick(b) {
+  return canBreak(b) && !(b.skipUntil > playTime);
+}
+const coinPile = (b) => b.type === 'coins' && canPick(b);
 
 function baseGoal() {
   const c = state.coins;
@@ -835,6 +875,8 @@ function baseGoal() {
 
 const goalPointer = document.getElementById('goalPointer');
 const shopHint = document.getElementById('shopHint');
+const khEIcon = document.querySelector('#khE .kh-ic');
+let goalCoins = -1;
 const _proj = new THREE.Vector3();
 
 
@@ -843,7 +885,7 @@ function toScreen(x, y, z) {
   return { x: (_proj.x * 0.5 + 0.5) * window.innerWidth, y: (-_proj.y * 0.5 + 0.5) * window.innerHeight };
 }
 
-function showPointer(target) {
+function showPointer(target, icon) {
   _proj.set(target.x, target.y + 1.2, target.z).project(camera);
   const onScreen = _proj.z < 1 && Math.abs(_proj.x) < 0.9 && Math.abs(_proj.y) < 0.85;
   arrowMesh.visible = onScreen && placeClearOfHud(arrowMesh, arrowMesh.position.y, Math.max(0, arrowMesh.position.y - target.y + 1));
@@ -857,19 +899,56 @@ function showPointer(target) {
   const a = toScreen(player.pos.x, player.pos.y + 1, player.pos.z);
   const b = toScreen(player.pos.x + (dx / d) * 4, player.pos.y + 1, player.pos.z + (dz / d) * 4);
   const ang = Math.atan2(b.y - a.y, b.x - a.x);
-  const px = a.x + Math.cos(ang) * 130;
-  const py = a.y + Math.sin(ang) * 130;
+  const c = Math.cos(ang);
+  const s = Math.sin(ang);
+  const blockers = pointerBlockers();
+  let r = POINTER_RADII[0];
+  for (const rr of POINTER_RADII) {
+    const x = a.x + c * rr;
+    const y = a.y + s * rr;
+    if (!blockers.some((k) => Math.abs(k.x - x) < k.w / 2 + 40 && Math.abs(k.y - y) < k.h / 2 + 40)) {
+      r = rr;
+      break;
+    }
+  }
+  const px = a.x + c * r;
+  const py = a.y + s * r;
+  if (pointerIcon !== icon) {
+    pointerIcon = icon;
+    goalPointerIc.innerHTML = icon || '';
+    goalPointerIc.classList.toggle('hidden', !icon);
+  }
   goalPointer.classList.remove('hidden');
-  goalPointer.style.transform = `translate(${px - 40}px, ${py - 40}px) rotate(${ang}rad)`;
+  goalPointer.style.transform = `translate(${px - 40}px, ${py - 40}px)`;
+  goalPointerRot.style.transform = `rotate(${ang}rad)`;
+  goalPointerIc.style.transform = `translate(${-c * 34}px, ${-s * 34}px)`;
+}
+
+const POINTER_RADII = [130, 100, 165, 200];
+const goalPointerRot = goalPointer.querySelector('.gp-rot');
+const goalPointerIc = goalPointer.querySelector('.gp-ic');
+let pointerIcon = null;
+function pointerBlockers() {
+  const out = [];
+  for (const p of overlay.placed || []) out.push({ x: p.x, y: p.y, w: p.w, h: p.h });
+  for (const b of breakables.list) {
+    if (!b.alive || b.zone > maxZone() || Math.abs(b.x - player.pos.x) > 30 || Math.abs(b.z - player.pos.z) > 30) continue;
+    _proj.set(b.x, b.y + 1, b.z).project(camera);
+    if (_proj.z > 1) continue;
+    const w = 70 * b.r;
+    out.push({ x: (_proj.x * 0.5 + 0.5) * window.innerWidth, y: (-_proj.y * 0.5 + 0.5) * window.innerHeight, w, h: w });
+  }
+  return out;
 }
 
 let guidePile = null;
+let guideAim = null;
 function pickGuidePile() {
   const px = player.pos.x;
   const pz = player.pos.z;
-  if (guidePile && guidePile.alive && Math.hypot(guidePile.x - px, guidePile.z - pz) < 40) return guidePile;
+  if (guidePile && guidePile.alive && canPick(guidePile) && Math.hypot(guidePile.x - px, guidePile.z - pz) < 40) return guidePile;
   const skip = currentTarget && currentTarget.type === 'coins' ? currentTarget : null;
-  guidePile = breakables.nearest(px, pz, 40, maxZone(), 'coins', skip) || breakables.nearest(px, pz, 40, maxZone(), null, skip);
+  guidePile = breakables.nearest(px, pz, 40, maxZone(), coinPile, skip) || breakables.nearest(px, pz, 40, maxZone(), canPick, skip);
   return guidePile;
 }
 
@@ -878,30 +957,31 @@ function updateGuide(dt, goal) {
   const affordable = goal.cur >= goal.max && goal.max > 0;
   if (goal.type === 'break') {
     guidePile = null;
-    if (Math.hypot(goal.pos.x - player.pos.x, goal.pos.z - player.pos.z) > 8) target = { x: goal.pos.x, y: goal.pos.y, z: goal.pos.z, path: true };
+    if (Math.hypot(goal.pos.x - player.pos.x, goal.pos.z - player.pos.z) > 8) target = { x: goal.pos.x, y: goal.pos.y, z: goal.pos.z, path: true, ic: goal.ic };
   } else if (!affordable || time < helpUntil) {
     const b = pickGuidePile();
-    if (b && Math.hypot(b.x - player.pos.x, b.z - player.pos.z) > 3.5) target = { x: b.x, y: b.y + 2.6 * b.scale, z: b.z, path: time < helpUntil };
+    if (b && Math.hypot(b.x - player.pos.x, b.z - player.pos.z) > 3.5) target = { x: b.x, y: b.y + 2.6 * b.scale, z: b.z, path: time < helpUntil, ic: ICONS.coin };
   } else guidePile = null;
   if (gateGuide) {
     if (player.pos.x > gateGuide.gx + 3 || time > gateGuide.until) gateGuide = null;
-    else target = { x: gateGuide.x, y: heightAt(gateGuide.x, 0) + 1.2, z: 0, path: true };
+    else target = { x: gateGuide.x, y: heightAt(gateGuide.x, 0) + 1.2, z: 0, path: true, ic: ICONS.gate };
   }
   if (!target && goal.pos && goal.cur >= goal.max && goal.max > 0) {
     const d = Math.hypot(goal.pos.x - player.pos.x, goal.pos.z - player.pos.z);
-    if (d > 4.5) target = { x: goal.pos.x, y: goal.pos.y, z: goal.pos.z, path: true };
+    if (!ui.promptKey && d > 1.2) target = { x: goal.pos.x, y: goal.pos.y, z: goal.pos.z, path: true, ic: goal.ic };
   }
   const shopReady = goal.type === 'up' && goal.cur >= goal.max;
   document.getElementById('btnPets').classList.toggle('pulse', goal.type === 'merge' && !ui.panel);
   shopHint.classList.toggle('hidden', !shopReady || !!ui.panel);
   document.getElementById('btnShop').classList.toggle('pulse', shopReady);
+  guideAim = target;
   if (!target) {
     arrowMesh.visible = false;
     goalPointer.classList.add('hidden');
     return;
   }
   arrowMesh.position.set(target.x, target.y + Math.abs(Math.sin(time * 4)) * 0.8, target.z);
-  showPointer(target);
+  showPointer(target, target.ic);
   if (target.path) {
     guideT -= dt;
     if (guideT <= 0) {
@@ -940,49 +1020,141 @@ function pickOnScreen(sx, sy) {
   return best;
 }
 
+function handAt(x, y) {
+  return handB && handB.alive && Math.abs(x - handPos.x - 32) < 48 && Math.abs(y - handPos.y - 32) < 48 ? handB : null;
+}
+
+function deny(b) {
+  if (time - (b.denyT ?? -10) < 0.6) return;
+  b.denyT = time;
+  audio.error();
+  logEvent('input', { kind: 'tooStrong', target: b.type, need: needPower(b), power: squad.totalPower() });
+}
+
+function sendPets(b) {
+  if (!canBreak(b)) {
+    deny(b);
+    return false;
+  }
+  b.skipUntil = 0;
+  manualTarget = b;
+  fx.burst(b.x, b.y + 0.3, b.z, '#ffd23a', 10, { speed: 4, up: 1, life: 0.4, size: 0.4 });
+  audio.click();
+  return true;
+}
+
 function handleTaps(taps) {
   for (const t of taps) {
     logEvent('input', { kind: 'tap', x: Math.round(t.x), y: Math.round(t.y) });
-    const ndc = new THREE.Vector2((t.x / window.innerWidth) * 2 - 1, -(t.y / window.innerHeight) * 2 + 1);
-    raycaster.setFromCamera(ndc, camera);
-    const objs = breakables.list.filter((b) => b.alive && b.zone <= maxZone()).map((b) => b.g);
-    const hits = raycaster.intersectObjects(objs, true);
-    let b = null;
-    if (hits.length) {
-      let o = hits[0].object;
-      while (o.parent && !objs.includes(o)) o = o.parent;
-      b = breakables.list.find((x) => x.g === o);
+    let b = handAt(t.x, t.y);
+    if (!b) {
+      const ndc = new THREE.Vector2((t.x / window.innerWidth) * 2 - 1, -(t.y / window.innerHeight) * 2 + 1);
+      raycaster.setFromCamera(ndc, camera);
+      const objs = breakables.list.filter((k) => k.alive && k.zone <= maxZone()).map((k) => k.g);
+      const hits = raycaster.intersectObjects(objs, true);
+      if (hits.length) {
+        let o = hits[0].object;
+        while (o.parent && !objs.includes(o)) o = o.parent;
+        b = breakables.list.find((x) => x.g === o);
+      }
     }
     if (!b) b = pickOnScreen(t.x, t.y);
-    if (!b) continue;
-    manualTarget = b;
-    fx.burst(b.x, b.y + 0.3, b.z, '#ffd23a', 10, { speed: 4, up: 1, life: 0.4, size: 0.4 });
+    if (!b || !sendPets(b)) continue;
     if (playTime - lastTapHit > 0.15) {
       lastTapHit = playTime;
       breakables.damage(b, Math.max(2, Math.round(squad.totalPower() * 0.15)), false);
       logEvent('hit', { by: 'tap', target: b.type, hp: b.hp });
     }
-    audio.click();
     logEvent('input', { kind: 'sendPets', target: b.type });
     state.stats.sentPets = (state.stats.sentPets || 0) + 1;
   }
 }
 
+function autoTarget(reach) {
+  const px = player.pos.x;
+  const pz = player.pos.z;
+  const z = maxZone();
+  let t = null;
+  if (state.hatched === 0) t = breakables.nearest(px, pz, reach, z, coinPile);
+  if (!t) t = breakables.nearest(px, pz, reach, z, canPick);
+  if (!t && stillT > 2) t = breakables.nearest(px, pz, 24, z, canPick);
+  if (t) return t;
+  let best = null;
+  for (const b of breakables.list) {
+    if (!b.alive || b.zone > z || b.type === 'diamond' || b.skipUntil > playTime || Math.hypot(b.x - px, b.z - pz) > 24) continue;
+    if (!best || b.hp < best.hp) best = b;
+  }
+  return best;
+}
+
+const watch = { b: null, hp: 0, t: 0 };
+function watchProgress(target) {
+  if (!target || target !== watch.b || hatch.active || mode !== 'play') {
+    watch.b = target;
+    watch.hp = target ? target.hp : 0;
+    watch.t = playTime;
+    return target;
+  }
+  if (target.hp < watch.hp) {
+    watch.hp = target.hp;
+    watch.t = playTime;
+    return target;
+  }
+  if (playTime - watch.t < 4) return target;
+  target.skipUntil = playTime + 20;
+  logEvent('stall', { target: target.type, hp: target.hp, manual: manualTarget === target });
+  if (manualTarget === target) manualTarget = null;
+  if (guidePile === target) guidePile = null;
+  watch.b = null;
+  return autoTarget(10 + state.up.magnet * 3);
+}
+
+let stillT = 0;
+let clickHint = null;
+let clickHintDone = false;
+function walkIn(b, how) {
+  if (manualTarget === b) return false;
+  const busy = !!(currentTarget && currentTarget.alive && currentTarget !== b);
+  if (!sendPets(b)) return false;
+  logEvent('input', { kind: 'walkPile', how, target: b.type, busy });
+  if (busy && !clickHintDone && (state.stats.sentPets || 0) < 1) {
+    clickHintDone = true;
+    clickHint = { b, until: time + 3.5 };
+    logEvent('hint', { kind: 'clickPile' });
+  }
+  return true;
+}
+
+function actionPile() {
+  const b = breakables.nearest(player.pos.x, player.pos.z, 3, maxZone(), canBreak) || breakables.nearest(player.pos.x, player.pos.z, 3, maxZone());
+  if (!b) return false;
+  walkIn(b, 'key');
+  return true;
+}
+
 let lastIncomeT = 0;
 let tapHintShown = 0;
 const tapHand = document.getElementById('tapHand');
+let handB = null;
+const handPos = { x: 0, y: 0 };
 function updateTapHint() {
-  const idle = mode === 'play' && !hatch.active && !ui.panel && !G.paused && (state.stats.sentPets || 0) < 1 && playTime - lastIncomeT > 10 && !currentTarget;
-  const b = idle ? breakables.nearest(player.pos.x, player.pos.z, 45, maxZone()) : null;
+  const free = mode === 'play' && !hatch.active && !ui.panel && !G.paused;
+  if (clickHint && (!free || time > clickHint.until || !clickHint.b.alive || (state.stats.sentPets || 0) > 0)) clickHint = null;
+  const idle = free && (state.stats.sentPets || 0) < 1 && playTime - lastIncomeT > 10 && !currentTarget;
+  const b = clickHint ? clickHint.b : idle ? breakables.nearest(player.pos.x, player.pos.z, 45, maxZone(), canPick) : null;
   if (b) _proj.set(b.x, b.y + 1, b.z).project(camera);
   if (!b || _proj.z > 1 || Math.abs(_proj.x) > 0.95 || Math.abs(_proj.y) > 0.95) {
     tapHand.classList.add('hidden');
+    handB = null;
     return;
   }
   if (!tapHintShown) logEvent('hint', { kind: 'tapHand' });
   tapHintShown = 1;
+  handB = b;
+  handPos.x = (_proj.x * 0.5 + 0.5) * window.innerWidth - 20;
+  handPos.y = (-_proj.y * 0.5 + 0.5) * window.innerHeight - 10;
   tapHand.classList.remove('hidden');
-  tapHand.style.transform = `translate(${(_proj.x * 0.5 + 0.5) * window.innerWidth - 20}px, ${(-_proj.y * 0.5 + 0.5) * window.innerHeight - 10}px)`;
+  tapHand.style.transform = `translate(${handPos.x}px, ${handPos.y}px)`;
 }
 
 const HUD_SEL = ['#coinPill', '#gemPill', '#powerPill', '#goal', '.topright', '.side', '#prompt', '#keysHint'];
@@ -1132,6 +1304,7 @@ function update(dt) {
     return;
   }
   if (active) playTime += dt;
+  eventGameT = playTime;
   let sim = dt;
   if (hitstop > 0) {
     hitstop -= dt;
@@ -1148,23 +1321,34 @@ function update(dt) {
   const pres = player.update(sim, inputProxy, rig.yaw, world, 1 + state.up.walk * 0.15, breakables, maxZone());
   if (pres.moving) moveTime += dt;
   const punchDmg = Math.max(3, Math.round(squad.totalPower() * 0.25));
-  if (pres.hitTarget && player.punch()) {
-    breakables.damage(pres.hitTarget, punchDmg, false);
-    logEvent('hit', { by: 'player', dmg: punchDmg, target: pres.hitTarget.type, hp: pres.hitTarget.hp });
-    manualTarget = pres.hitTarget.alive ? pres.hitTarget : null;
-  }
   handleTaps(inp.taps);
-  if (manualTarget && (!manualTarget.alive || Math.hypot(manualTarget.x - player.pos.x, manualTarget.z - player.pos.z) > 26)) manualTarget = null;
-  let target = manualTarget;
-  if (!target && mode === 'play' && guidePile && guidePile.alive && Math.hypot(guidePile.x - player.pos.x, guidePile.z - player.pos.z) < 4.5) target = guidePile;
-  if (!target && mode === 'play') {
-    if (currentTarget && currentTarget.alive && Math.hypot(currentTarget.x - player.pos.x, currentTarget.z - player.pos.z) < 14 + state.up.magnet * 3) target = currentTarget;
-    else {
-      const reach = 10 + state.up.magnet * 3;
-      if (state.hatched === 0) target = breakables.nearest(player.pos.x, player.pos.z, reach, maxZone(), 'coins');
-      if (!target) target = breakables.nearest(player.pos.x, player.pos.z, reach, maxZone());
+  if (active && !hatch.active) {
+    const hb = pres.hitTarget;
+    if (hb && hb.alive) {
+      if (canBreak(hb)) {
+        walkIn(hb, 'walk');
+        if (player.punch()) {
+          breakables.damage(hb, punchDmg, false);
+          logEvent('hit', { by: 'player', dmg: punchDmg, target: hb.type, hp: hb.hp });
+        }
+      } else deny(hb);
+    }
+    if (inp.jump) {
+      const b = breakables.nearest(player.pos.x, player.pos.z, 3, maxZone(), canBreak) || breakables.nearest(player.pos.x, player.pos.z, 3, maxZone());
+      if (b) walkIn(b, 'space');
     }
   }
+  stillT = pres.moving ? 0 : stillT + dt;
+  if (manualTarget && (!manualTarget.alive || !canBreak(manualTarget) || Math.hypot(manualTarget.x - player.pos.x, manualTarget.z - player.pos.z) > 26)) manualTarget = null;
+  let target = manualTarget;
+  if (!target && mode === 'play' && guidePile && guidePile.alive && canPick(guidePile) && Math.hypot(guidePile.x - player.pos.x, guidePile.z - player.pos.z) < 4.5) target = guidePile;
+  if (!target && mode === 'play') {
+    const magnet = state.up.magnet * 3;
+    const keep = stillT > 2 ? 26 : 14 + magnet;
+    if (currentTarget && currentTarget.alive && canPick(currentTarget) && Math.hypot(currentTarget.x - player.pos.x, currentTarget.z - player.pos.z) < keep) target = currentTarget;
+    else target = autoTarget(10 + magnet);
+  }
+  target = watchProgress(target);
   if (currentTarget !== target) {
     if (currentTarget) currentTarget.attackers = 0;
     currentTarget = target;
@@ -1201,11 +1385,15 @@ function update(dt) {
   }
   if (mode === 'play') {
     rig.occluded = heroOccluded();
+    if (player.ghost) player.ghost.visible = rig.occluded;
     rig.update(dt, inp, player.pos);
   }
   world.sky.position.copy(camera.position);
-  sun.position.copy(player.pos).addScaledVector(sunDir, 70);
-  sun.target.position.copy(player.pos);
+  camera.getWorldDirection(tmpV).setY(0);
+  if (tmpV.lengthSq() > 1e-4) tmpV.normalize().multiplyScalar(10).add(player.pos);
+  else tmpV.copy(player.pos);
+  sun.target.position.copy(tmpV);
+  sun.position.copy(tmpV).addScaledVector(sunDir, 70);
   world.applyAmbience(mode === 'play' ? player.pos.x : PLAZA.x, dt, lights, scene, renderer);
   const z = zoneAt(player.pos.x);
   if (z !== lastZone) {
@@ -1216,8 +1404,16 @@ function update(dt) {
   ui.setCurrency(state.coins, state.gems);
   ui.updateFly(dt);
   slowT -= dt;
+  const coinsNow = Math.floor(state.coins);
+  if (slowT > 0 && coinsNow !== goalCoins) {
+    goalCoins = coinsNow;
+    const goal = nextGoal();
+    ui.goal(goal.ic, goal.text, goal.cur, goal.max, goal.num);
+    G.goal = goal;
+  }
   if (slowT <= 0) {
     slowT = 0.2;
+    goalCoins = coinsNow;
     checkPrompts();
     const goal = nextGoal();
     ui.goal(goal.ic, goal.text, goal.cur, goal.max, goal.num);
@@ -1237,8 +1433,18 @@ function update(dt) {
     const near = !!ui.promptKey;
     kh.classList.toggle('has-e', near);
     document.getElementById('khE').classList.toggle('hidden', !near);
+    const eIcon = ui.promptKey.startsWith('gate') ? 'gate' : 'egg';
+    if (near && eIcon !== khEIcon.dataset.icon) {
+      khEIcon.dataset.icon = eIcon;
+      khEIcon.innerHTML = ICONS[eIcon];
+    }
   }
-  if (G.goal && mode === 'play') updateGuide(dt, G.goal);
+  if (G.goal && mode === 'play' && !hatch.active) updateGuide(dt, G.goal);
+  else {
+    arrowMesh.visible = false;
+    goalPointer.classList.add('hidden');
+  }
+  if (hatch.active) targetRing.visible = false;
   updateTapHint();
   if (mode === 'play') updateWorldLabels(dt);
   if (fountainT(dt)) {
@@ -1265,6 +1471,7 @@ function fountainT(dt) {
   return false;
 }
 
+const SIM_STEPS = Math.max(1, Math.min(4, Math.floor(Number(dbgVal('speed')) || 1)));
 let last = performance.now();
 let fpsAcc = 0;
 let fpsN = 0;
@@ -1290,10 +1497,11 @@ function loop(now) {
       perf.p99 = Math.round(sorted[Math.floor(sorted.length * 0.99)] * 10) / 10;
       perf.samples.length = 0;
       perf.windowT = 0;
-      if (perf.median > 25 && quality === 'high' && autoStep < 2 && playTime > 5 && !dbg('hq')) {
+      const slow = sorted.filter((x) => x > 20).length / sorted.length;
+      if ((perf.median > 25 || slow > 0.2) && quality === 'high' && autoStep < 3 && playTime > 5 && !dbg('hq')) {
         autoStep++;
-        perf.steps.push({ t: Math.round(performance.now()), step: autoStep, median: perf.median });
-        logEvent('quality', { step: autoStep, median: perf.median });
+        perf.steps.push({ t: Math.round(performance.now()), step: autoStep, median: perf.median, slow: Math.round(slow * 100) });
+        logEvent('quality', { step: autoStep, median: perf.median, slow: Math.round(slow * 100) });
         applyQuality();
       }
     }
@@ -1302,8 +1510,13 @@ function loop(now) {
     if (raw > 0.25) perf.loadGaps.push({ ms: Math.round(raw * 1000), after: events.length ? (events[events.length - 1].data.phase || events[events.length - 1].type) + (events[events.length - 1].data.p ? events[events.length - 1].data.p.toFixed(2) : '') : '' });
     return;
   }
-  update(dt);
+  const t0 = performance.now();
+  for (let i = 0; i < SIM_STEPS; i++) update(dt);
+  const t1 = performance.now();
   composer.render();
+  const t2 = performance.now();
+  perf.cpuUpdate += (t1 - t0 - perf.cpuUpdate) * 0.05;
+  perf.cpuRender += (t2 - t1 - perf.cpuRender) * 0.05;
 }
 
 let wantStart = false;
@@ -1373,6 +1586,8 @@ Object.defineProperty(window, '__debug', {
       frameMedianMs: perf.median,
       frameP99Ms: perf.p99,
       qualityStep: autoStep,
+      cpuUpdateMs: +perf.cpuUpdate.toFixed(2),
+      cpuRenderMs: +perf.cpuRender.toFixed(2),
       loadGaps: perf.loadGaps,
     };
   },
@@ -1453,9 +1668,8 @@ window.__test = {
   gapStart(ms) {
     const rec = { gaps: [], t0: performance.now(), last: 0 };
     window.__gapRec = rec;
-    const f = () => {
-      const n = performance.now();
-      if (rec.last) rec.gaps.push(Math.round(n - rec.last));
+    const f = (n) => {
+      if (rec.last) rec.gaps.push(Math.round((n - rec.last) * 10) / 10);
       rec.last = n;
       if (n - rec.t0 < ms) requestAnimationFrame(f);
     };
@@ -1469,6 +1683,21 @@ window.__test = {
   goal() {
     const g = nextGoal();
     return { key: g.key, cur: Math.floor(g.cur), max: g.max, mult: G.coinMult(), arrow: arrowMesh.visible, pointer: !goalPointer.classList.contains('hidden'), rate: Math.round(incomeRate() * 10) / 10, shopHint: !shopHint.classList.contains('hidden'), pile: guidePile && guidePile.alive ? { type: guidePile.type, x: +guidePile.x.toFixed(2), z: +guidePile.z.toFixed(2) } : null };
+  },
+  guide() {
+    const a = guideAim;
+    const ptr = !goalPointer.classList.contains('hidden');
+    const m = ptr ? /rotate\(([-\d.e]+)rad\)/.exec(goalPointerRot.style.transform) : null;
+    const hand = tapHand.classList.contains('hidden') ? null : tapHand.getBoundingClientRect();
+    return {
+      arrow: arrowMesh.visible,
+      at: a ? toScreen(a.x, a.y - 1, a.z) : null,
+      aim: a ? { x: a.x, z: a.z } : null,
+      hero: toScreen(player.pos.x, player.pos.y + 1, player.pos.z),
+      playTime,
+      ang: m ? Number(m[1]) : null,
+      hand: hand ? { x: hand.left + hand.width / 2, y: hand.top + hand.height / 2, tipX: hand.left + 20, tipY: hand.top + 10 } : null,
+    };
   },
   breakables() {
     return breakables.list.filter((b) => b.alive && b.zone <= maxZone()).map((b) => ({ type: b.type, x: +b.x.toFixed(2), z: +b.z.toFixed(2), hp: b.hp, maxHp: b.maxHp, coins: b.coins }));
@@ -1525,6 +1754,9 @@ window.__test = {
       stands: world.stands.map((s) => ({ kind: s.kind, op: +s.sign.material.opacity.toFixed(2), rect: r(spriteRect(s.sign)) })),
       hud: hudRectCache.map((h) => ({ l: Math.round(h.left), r: Math.round(h.right), t: Math.round(h.top), b: Math.round(h.bottom) })),
     };
+  },
+  gfx() {
+    return { THREE, renderer, composer, bloom, sun, scene, camera, rt, world, squad, breakables, fx, overlay, player, setMatteEnv, setStep: (s) => { autoStep = s; applyQuality(); } };
   },
   give(c, g) {
     state.coins += c;
@@ -1685,6 +1917,7 @@ async function boot() {
   };
   normalizeMaterials(scene);
   normalizeMaterials(hatch.scene);
+  dropEnvOnMatte(scene);
   const warmPets = [['kedi', 0], ['kedi', 1], ['kedi', 2], ['kristalKedi', 0], ['ormanEjder', 1], ['papagan', 0]];
   const warmGroupMain = new THREE.Group();
   const warmGroupHatch = new THREE.Group();

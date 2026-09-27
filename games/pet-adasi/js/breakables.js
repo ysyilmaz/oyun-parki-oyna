@@ -13,6 +13,7 @@ const GIFT_COLORS = [
   [['#ff6fb5', '#fff3a8'], ['#7ee6ff', '#ff6fb5'], ['#b98cff', '#9ff0d0']],
   [['#7a5cff', '#6fe8ff'], ['#ff5fe0', '#ffffff'], ['#3fd6ff', '#ff8af0']],
 ];
+const SHADOW_D = 22;
 const CRYSTAL_COLORS = ['#6fe8ff', '#8fff9f', '#ffb14f', '#9fd8ff', '#ff8fd0', '#c58bff'];
 
 let GEO = null;
@@ -139,9 +140,11 @@ function build() {
 function makeGroup(type, zone, seed) {
   build();
   const g = new THREE.Group();
-  const add = (geo, mat) => {
+  const casters = [];
+  const add = (geo, mat, cast = true) => {
     const m = new THREE.Mesh(geo, mat);
-    m.castShadow = true;
+    m.castShadow = cast;
+    if (cast) casters.push(m);
     m.receiveShadow = true;
     g.add(m);
     return m;
@@ -149,22 +152,22 @@ function makeGroup(type, zone, seed) {
   let spin = null;
   if (type === 'coins') {
     add(GEO.coinsGold, MAT.gold);
-    add(GEO.coinsGem, MAT.gem);
+    add(GEO.coinsGem, MAT.gem, false);
   } else if (type === 'chest') {
     add(GEO.chestWood, MAT.wood);
-    add(GEO.chestGold, MAT.gold);
-    add(GEO.chestGem, MAT.gem);
+    add(GEO.chestGold, MAT.gold, false);
+    add(GEO.chestGem, MAT.gem, false);
   } else if (type === 'gift') {
     add(GEO.gift[zone][seed % 3], MAT.gift);
   } else if (type === 'crystal') {
-    add(GEO.crystalRock, MAT.rock);
+    add(GEO.crystalRock, MAT.rock, false);
     add(GEO.crystal, MAT.crystals[zone]);
   } else if (type === 'diamond') {
-    add(GEO.pedestal, MAT.wood);
+    add(GEO.pedestal, MAT.wood, false);
     spin = add(GEO.diamond, MAT.diamond);
     spin.position.y = 2.6;
   }
-  return { g, spin };
+  return { g, spin, casters };
 }
 
 export class Breakables {
@@ -177,6 +180,7 @@ export class Breakables {
     this.audio = audio;
     this.hooks = hooks;
     this.list = [];
+    this.pending = [];
     this.rand = rng(1234);
   }
 
@@ -247,7 +251,7 @@ export class Breakables {
     const spot = fixed || this.findSpot(zone, def.r, near);
     if (!spot) return null;
     const seed = Math.floor(this.rand() * 99);
-    const { g, spin } = makeGroup(type, zone, seed);
+    const { g, spin, casters } = makeGroup(type, zone, seed);
     const y = heightAt(spot.x, spot.z);
     g.position.set(spot.x, y, spot.z);
     g.rotation.y = this.rand() * Math.PI * 2;
@@ -260,7 +264,7 @@ export class Breakables {
     const b = {
       type, zone, def,
       x: spot.x, y, z: spot.z, r: def.r * scale,
-      g, spin, scale,
+      g, spin, scale, casters, cast: true,
       maxHp: hp,
       hp,
       coins: Math.round((first ? def.coins0 : def.coins) * ZONE_REWARD[zone]),
@@ -276,7 +280,8 @@ export class Breakables {
     let best = null;
     let bd = maxD;
     for (const b of this.list) {
-      if (!b.alive || b.zone > maxZone || b === skip || (type && b.type !== type)) continue;
+      if (!b.alive || b.zone > maxZone || b === skip) continue;
+      if (typeof type === 'function' ? !type(b) : type && b.type !== type) continue;
       const d = Math.hypot(b.x - x, b.z - z) - b.r;
       if (d < bd) {
         bd = d;
@@ -319,6 +324,12 @@ export class Breakables {
 
   update(dt, time, playerPos, maxZone, focusX) {
     this.time = time;
+    for (let i = this.pending.length - 1; i >= 0; i--) {
+      const p = this.pending[i];
+      if (time < p.at) continue;
+      this.pending.splice(i, 1);
+      this.spawn(p.zone, p.type, false, p.zone <= maxZone ? playerPos : null);
+    }
     const bars = [];
     const zc = zoneAt(focusX ?? playerPos.x);
     for (let i = this.list.length - 1; i >= 0; i--) {
@@ -333,7 +344,7 @@ export class Breakables {
           const zone = b.zone;
           const type = b.type === 'diamond' ? 'diamond' : null;
           const delay = type ? 25 : 2.5 + Math.random() * 3;
-          setTimeout(() => this.spawn(zone, type, false, zone <= maxZone ? playerPos : null), delay * 1000);
+          this.pending.push({ at: time + delay, zone, type });
         }
         continue;
       }
@@ -358,7 +369,12 @@ export class Breakables {
       }
       if (b.type === 'crystal' && Math.random() < dt * 1.2) this.fx.sparkle(b.x + (Math.random() - 0.5) * 1.5, b.y + 1 + Math.random() * 1.5, b.z + (Math.random() - 0.5) * 1.5, CRYSTAL_COLORS[b.zone], 0.45);
       const d = Math.hypot(b.x - playerPos.x, b.z - playerPos.z);
-      const recently = time - b.lastHit < 4;
+      const cast = d < SHADOW_D;
+      if (b.cast !== cast) {
+        b.cast = cast;
+        for (const m of b.casters) m.castShadow = cast;
+      }
+      const recently = time - b.lastHit < 4 || time - (b.denyT ?? -10) < 4;
       const hurt = b.hp < b.maxHp;
       if (b.zone <= maxZone && ((d < 14 && (recently || b.attackers > 0 || d < 7)) || (hurt && d < 32))) {
         bars.push({ b, d, k: d - (hurt || b.attackers > 0 ? 40 : 0) - (b === this.picked ? 100 : 0) });
@@ -366,15 +382,20 @@ export class Breakables {
     }
     bars.sort((a, c) => a.k - c.k);
     bars.length = Math.min(bars.length, 8);
-    return bars.map(({ b }) => ({
-      x: b.x,
-      y: b.y + (b.type === 'diamond' ? 5 : 3.1) * b.scale,
-      z: b.z,
-      pct: b.hp / b.maxHp,
-      text: `+<span class="ic-coin"></span>${fmt(Math.round(b.coins * this.hooks.coinMult()))}${b.gems ? ` +<span class="ic-gem"></span>${b.gems}` : ''}`,
-      target: b.attackers > 0,
-      picked: b === this.picked,
-      hit: time - b.lastHit < 0.14,
-    }));
+    return bars.map(({ b }) => {
+      const need = this.hooks.lockedNeed(b);
+      return {
+        x: b.x,
+        y: b.y + (b.type === 'diamond' ? 5 : 3.1) * b.scale,
+        z: b.z,
+        pct: b.hp / b.maxHp,
+        text: need ? `<span class="ic-lock"></span><span class="ic-bolt"></span>${fmt(need)}` : `+<span class="ic-coin"></span>${fmt(Math.round(b.coins * this.hooks.coinMult()))}${b.gems ? ` +<span class="ic-gem"></span>${b.gems}` : ''}`,
+        target: b.attackers > 0,
+        picked: b === this.picked,
+        locked: !!need,
+        deny: time - (b.denyT ?? -10) < 0.45,
+        hit: time - b.lastHit < 0.14,
+      };
+    });
   }
 }

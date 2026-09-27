@@ -190,7 +190,7 @@ export class Player {
       this.animState.speed = Math.hypot(this.vel.x, this.vel.z);
       this.anim.update(dt, this.animState);
     }
-    if (this.ghost) {
+    if (this.ghost && this.ghost.visible) {
       const src = this.ghostSrc;
       const dst = this.ghostDst;
       for (let i = 0; i < src.length; i++) {
@@ -205,7 +205,12 @@ export class Player {
     const ss = 1 - Math.min(0.5, this.jumpY * 0.12);
     this.shadow.scale.setScalar(ss);
     let hitTarget = null;
-    if (bumped && bumped.alive && len > 0.05) hitTarget = bumped;
+    if (bumped && bumped.alive && len > 0.05) {
+      const bx = bumped.x - this.pos.x;
+      const bz = bumped.z - this.pos.z;
+      const into = (tx * bx + tz * bz) / ((Math.hypot(tx, tz) * Math.hypot(bx, bz)) || 1);
+      if (into > 0.5) hitTarget = bumped;
+    }
     return { hitTarget, moving };
   }
 }

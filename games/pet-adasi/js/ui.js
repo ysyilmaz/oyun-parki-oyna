@@ -9,6 +9,7 @@ function xpPct(xp = 0) {
 import { petThumb } from './petModels.js';
 
 const $ = (id) => document.getElementById(id);
+const PUNCH = [{ transform: 'scale(1)' }, { transform: 'scale(1.2)', offset: 0.45 }, { transform: 'scale(1)' }];
 
 function rarityOf(p) {
   return findPetDef(p.sp).entry[1];
@@ -97,10 +98,7 @@ export class UI {
   }
 
   punch(id) {
-    const el = $(id);
-    el.classList.remove('punch');
-    void el.offsetWidth;
-    el.classList.add('punch');
+    $(id).animate(PUNCH, { duration: 160, easing: 'ease-out' });
   }
 
   setPower(p) {
@@ -444,7 +442,7 @@ export class UI {
       const max = lvl >= u.max;
       const cost = max ? 0 : u.costs[lvl];
       const pips = Array.from({ length: u.max }, (_, i) => `<div class="pip ${i < lvl ? 'on' : ''}"></div>`).join('');
-      return `<div class="up-card ${G.goal && G.goal.id === u.id ? 'goal-card' : ''}"><div class="up-ic" data-icon="${u.icon}"></div><div class="up-body"><div class="up-name">${u.name}</div><div class="pips">${pips}</div><div class="up-desc">${max ? 'En yüksek seviye!' : u.desc(lvl)}</div>${max ? '<button class="big-btn small" disabled>Tamam</button>' : `<button class="big-btn gold small" data-up="${u.id}" ${G.state.coins >= cost ? '' : 'disabled'}>${icon('coin')}${fmt(cost)}</button>`}</div></div>`;
+      return `<div class="up-card ${G.goal && G.goal.id === u.id ? 'goal-card' : ''}"><div class="up-ic" data-icon="${u.icon}"></div><div class="up-body"><div class="up-name">${u.name}</div><div class="pips">${pips}</div><div class="up-desc">${max ? 'En yüksek seviye!' : u.desc(lvl)}</div>${!max && u.id === 'slots' && G.state.pets.length < G.maxSlots() ? `<div class="up-note">${icon('egg')}Önce yumurta aç</div>` : ''}${max ? '<button class="big-btn small" disabled>Tamam</button>' : `<button class="big-btn gold small" data-up="${u.id}" ${G.state.coins >= cost ? '' : 'disabled'}>${icon('coin')}${fmt(cost)}</button>`}</div></div>`;
     }).join('');
     body.innerHTML = `<div class="shop">${rbReady ? rebirthCard + upCards : upCards + rebirthCard}</div>`;
     const rbb = document.getElementById('rebirthBtn');

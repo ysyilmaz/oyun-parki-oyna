@@ -93,6 +93,36 @@ export function windMaterial(opts, strength = 0.06) {
 }
 
 const _white = new THREE.Color(1, 1, 1);
+const envAmb = { value: new THREE.Color(1, 1, 1) };
+const matte = { off: true, mats: [] };
+
+export function setMatteEnv(on) {
+  matte.off = !on;
+  for (const m of matte.mats) m.needsUpdate = true;
+}
+
+export function dropEnvOnMatte(root) {
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+      if (!m || !m.isMeshStandardMaterial || m.userData.noEnv || m.metalness >= 0.3 || m.roughness < 0.5 || m.envMap) continue;
+      m.userData.noEnv = true;
+      matte.mats.push(m);
+      const prev = m.onBeforeCompile;
+      const key = m.customProgramCacheKey();
+      m.onBeforeCompile = (sh, r) => {
+        prev.call(m, sh, r);
+        if (!matte.off) return;
+        sh.uniforms.uEnvAmb = envAmb;
+        sh.fragmentShader = sh.fragmentShader
+          .replace('#include <common>', '#include <common>\nuniform vec3 uEnvAmb;')
+          .replace('#include <lights_fragment_maps>', '#undef USE_ENVMAP\n#include <lights_fragment_maps>\niblIrradiance += uEnvAmb;\nradiance += uEnvAmb * RECIPROCAL_PI;');
+      };
+      m.customProgramCacheKey = () => key + (matte.off ? '|noenv' : '');
+      m.needsUpdate = true;
+    }
+  });
+}
 
 export function normalizeMaterials(root) {
   root.traverse((o) => {

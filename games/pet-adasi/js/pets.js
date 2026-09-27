@@ -109,7 +109,7 @@ export class Pet {
     const dx = desired.x - this.pos.x;
     const dz = desired.z - this.pos.z;
     const dist = Math.hypot(dx, dz);
-    const maxSp = 16 * speedMult;
+    const maxSp = 16 * speedMult + (target ? Math.max(0, dist - 6) * 2 : 0);
     let vx = 0;
     let vz = 0;
     if (dist > 0.15) {

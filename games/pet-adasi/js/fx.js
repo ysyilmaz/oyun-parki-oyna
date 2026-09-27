@@ -371,8 +371,8 @@ export class Overlay {
 
   project(x, y, z) {
     this.v.set(x, y, z).project(this.camera);
-    const w = this.root.clientWidth;
-    const h = this.root.clientHeight;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
     return { x: (this.v.x * 0.5 + 0.5) * w, y: (-this.v.y * 0.5 + 0.5) * h, vis: this.v.z < 1 && this.v.z > -1 };
   }
 
@@ -419,6 +419,7 @@ export class Overlay {
 
   update(dt, bars) {
     const placed = [];
+    this.placed = placed;
     for (let i = 0; i < this.bars.length; i++) {
       const b = this.bars[i];
       const src = bars[i];
@@ -459,6 +460,8 @@ export class Overlay {
       }
       b.el.classList.toggle('is-target', !!src.target);
       b.el.classList.toggle('is-picked', !!src.picked);
+      b.el.classList.toggle('is-locked', !!src.locked);
+      b.el.classList.toggle('is-deny', !!src.deny);
       b.el.classList.toggle('is-hit', !!src.hit);
     }
     for (const n of this.nums) {

@@ -458,63 +458,19 @@ function snowmanGeo() {
   return merge(parts);
 }
 
-function lollipopGeo() {
+function cottonTreeGeo() {
   const parts = [];
-  const stick = new THREE.CylinderGeometry(0.12, 0.14, 3.6, 8);
-  parts.push(part(stick, '#fffaf2', M(0, 1.8, 0)));
-  const disc = new THREE.SphereGeometry(1, 36, 18);
-  const cols = [new THREE.Color('#ff4f8b'), new THREE.Color('#ffffff'), new THREE.Color('#7ee6ff'), new THREE.Color('#ffffff')];
-  parts.push(part(disc, null, M(0, 4.3, 0, 0, 0, 0, 1.45, 1.45, 0.42), (c, x, y) => {
-    const dy = y - 4.3;
-    const r = Math.hypot(x, dy);
-    const a = Math.atan2(dy, x);
-    const k = Math.floor(((a / (Math.PI * 2)) * 4 + r * 1.6 + 8) % 4);
-    c.copy(cols[k]);
-  }));
-  stick.dispose();
-  disc.dispose();
-  return merge(parts);
-}
-
-function iceCreamGeo() {
-  const parts = [];
-  const cone = new THREE.ConeGeometry(0.75, 2.4, 14, 4);
-  parts.push(part(cone, null, M(0, 1.2, 0, Math.PI, 0, 0), (c, x, y, z) => {
-    const a = Math.atan2(z, x);
-    c.set(Math.sin(a * 6 + y * 5) * Math.sin(a * 6 - y * 5) > 0 ? '#e0a45c' : '#c98a42');
-  }));
+  const stick = new THREE.CylinderGeometry(0.09, 0.14, 2.8, 8);
+  parts.push(part(stick, '#f3e6d4', M(0, 1.4, 0, 0, 0, 0.04)));
   const s = new THREE.SphereGeometry(1, 16, 12);
-  parts.push(part(displace(s.clone(), 0.05, 5, 1), '#ff9fcf', M(0, 2.7, 0, 0, 0, 0, 0.9)));
-  parts.push(part(displace(s.clone(), 0.05, 5, 2), '#9ff0d0', M(0.05, 3.55, 0, 0, 0, 0, 0.72)));
-  parts.push(part(s, '#ff3d5a', M(0.1, 4.3, 0, 0, 0, 0, 0.24)));
-  cone.dispose();
+  [[0, 3.3, 0, 1.2], [0.7, 2.95, 0.3, 0.78], [-0.65, 3.0, -0.25, 0.82], [0.15, 3.95, -0.15, 0.72], [-0.2, 2.8, 0.6, 0.6]].forEach((b, i) => {
+    const g = displace(s.clone(), 0.16, 3.2, i + 11);
+    parts.push(part(g, null, M(b[0], b[1], b[2], 0, i, 0, b[3], b[3] * 0.9, b[3]), gradientY(2.2, 4.6, '#e6dcef', '#ffffff')));
+    g.dispose();
+  });
   s.dispose();
+  stick.dispose();
   return merge(parts);
-}
-
-function candyCaneGeo() {
-  const pts = [];
-  for (let i = 0; i <= 8; i++) pts.push(new THREE.Vector3(0, i * 0.45, 0));
-  for (let i = 1; i <= 8; i++) {
-    const a = (i / 8) * Math.PI;
-    pts.push(new THREE.Vector3(0.6 - Math.cos(a) * 0.6, 3.6 + Math.sin(a) * 0.6, 0));
-  }
-  const curve = new THREE.CatmullRomCurve3(pts);
-  const tube = new THREE.TubeGeometry(curve, 48, 0.2, 10, false);
-  const uv = tube.attributes.uv;
-  const cols = new Float32Array(uv.count * 3);
-  const red = new THREE.Color('#ff2d4a');
-  const white = new THREE.Color('#ffffff');
-  for (let i = 0; i < uv.count; i++) {
-    const t = uv.getX(i) * 14 + uv.getY(i) * 1;
-    const c = Math.floor(t * 2) % 2 ? red : white;
-    cols[i * 3] = c.r;
-    cols[i * 3 + 1] = c.g;
-    cols[i * 3 + 2] = c.b;
-  }
-  tube.deleteAttribute('uv');
-  tube.setAttribute('color', new THREE.BufferAttribute(cols, 3));
-  return tube;
 }
 
 function mushroomGeo(glow) {
@@ -1206,9 +1162,7 @@ export class World {
     const rocks = rockGeo(1);
     const mush = mushroomGeo(false);
     const glowMush = mushroomGeo(true);
-    const lolli = lollipopGeo();
-    const ice = iceCreamGeo();
-    const cane = candyCaneGeo();
+    const cotton = cottonTreeGeo();
     const crystal = crystalGeo();
     const snowman = snowmanGeo();
     const fence = fenceGeo();
@@ -1283,11 +1237,10 @@ export class World {
     });
     zoneFns.push(() => {
     const Z4 = 4;
-    this.instanced(lolli, plainMat, this.scatter({ zone: Z4, band: 'edge', spacing: 3.5, s0: 0.9, s1: 1.4 }, 20, 61), { shadow: true, collide: 0.4 });
-    this.instanced(lolli, plainMat, this.scatter({ zone: Z4, band: 'hill', spacing: 4, s0: 1.2, s1: 2 }, 30, 62), { shadow: false });
-    this.instanced(ice, plainMat, this.scatter({ zone: Z4, band: 'play', spacing: 8, s0: 0.9, s1: 1.2, r: 1.2 }, 6, 63), { shadow: true, collide: 0.9 });
-    this.instanced(ice, plainMat, this.scatter({ zone: Z4, band: 'hill', spacing: 5, s0: 1.2, s1: 1.9 }, 16, 64), { shadow: false });
-    this.instanced(cane, plainMat, this.scatter({ zone: Z4, band: 'edge', spacing: 3, s0: 0.9, s1: 1.4 }, 20, 65), { shadow: true, collide: 0.3 });
+    const cottonCols = ['#ff9fd0', '#ffb8e0', '#9ee8d2', '#c7b0ff'];
+    const cottonTint = (c, o) => c.set(cottonCols[Math.floor(o.k * cottonCols.length)]);
+    this.instanced(cotton, plainMat, this.scatter({ zone: Z4, band: 'edge', spacing: 3.5, s0: 0.9, s1: 1.4 }, 20, 61), { shadow: true, collide: 0.4, tint: cottonTint });
+    this.instanced(cotton, plainMat, this.scatter({ zone: Z4, band: 'hill', spacing: 4, s0: 1.2, s1: 2 }, 30, 62), { shadow: false, tint: cottonTint });
     const gum = new THREE.SphereGeometry(0.6, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2);
     const gumMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.25, metalness: 0 });
     const gumCols = ['#ff4f8b', '#7ee6ff', '#ffd84a', '#9dff7a', '#b88cff'];

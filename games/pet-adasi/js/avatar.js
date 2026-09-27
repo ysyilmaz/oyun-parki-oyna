@@ -35,7 +35,6 @@ function limb(parent, geo, eyesGeo, x, y, z, outline = true) {
   g.position.set(x, y, z);
   parent.add(g);
   const m = new THREE.Mesh(geo, mats().body);
-  m.castShadow = true;
   g.add(m);
   if (outline) {
     const o = new THREE.Mesh(geo, getOutlineMat());
@@ -136,7 +135,6 @@ export function buildAvatar() {
   cape.position.set(0, 0.66, -0.27);
   torso.add(cape);
   const capeMesh = new THREE.Mesh(capeFinal, getCapeMat());
-  capeMesh.castShadow = true;
   cape.add(capeMesh);
 
   root.traverse((o) => {

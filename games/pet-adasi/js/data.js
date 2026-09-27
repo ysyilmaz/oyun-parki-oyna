@@ -120,10 +120,10 @@ export const BREAKABLES = {
 };
 
 export const ZONE_HP = [1, 8, 62, 470, 3600, 28000];
-export const ZONE_REWARD = [1, 6.5, 44, 290, 2000, 14500];
+export const ZONE_REWARD = [2, 6.5, 44, 290, 2000, 14500];
 
 export const UPGRADES = [
-  { id: 'slots', name: 'Pet Yuvası', icon: 'paw', max: 5, costs: [150, 1400, 14000, 110000, 800000], desc: (l) => `${3 + l} pet → ${4 + l} pet` },
+  { id: 'slots', name: 'Pet Yuvası', icon: 'paw', max: 5, costs: [150, 550, 5000, 60000, 600000], desc: (l) => `${3 + l} pet → ${4 + l} pet` },
   { id: 'petSpeed', name: 'Pet Hızı', icon: 'bolt', max: 5, costs: [300, 2500, 20000, 160000, 1200000], desc: (l) => `+%${l * 20} → +%${(l + 1) * 20}` },
   { id: 'coinMult', name: 'Para Çarpanı', icon: 'coin', max: 5, costs: [400, 3500, 30000, 240000, 1800000], desc: (l) => `x${(1 + l * 0.3).toFixed(1)} → x${(1 + (l + 1) * 0.3).toFixed(1)}` },
   { id: 'walk', name: 'Koşu Hızı', icon: 'boot', max: 4, costs: [200, 2000, 18000, 150000], desc: (l) => `+%${l * 15} → +%${(l + 1) * 15}` },

@@ -447,7 +447,6 @@ export function createPetObject(spId, variant = 0, outline = false) {
   const geo = buildProcedural(spId, variant);
   const mat = materialFor(sp, variant);
   const body = new THREE.Mesh(geo.body, mat);
-  body.castShadow = true;
   inner.add(body);
   if (outline) inner.add(new THREE.Mesh(geo.body, getOutlineMat()));
   if (geo.eyes) {
@@ -459,7 +458,6 @@ export function createPetObject(spId, variant = 0, outline = false) {
       const pivot = new THREE.Group();
       pivot.position.set(s * w.pos[0], w.pos[1], w.pos[2]);
       const m = new THREE.Mesh(w.geo, mat);
-      m.castShadow = true;
       m.scale.set(s, 1, 1);
       m.rotation.y = s * 0.0;
       pivot.add(m);
