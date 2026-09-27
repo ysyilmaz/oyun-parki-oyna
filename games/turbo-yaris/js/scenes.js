@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { createCar, createDriver } from './assets.js';
+import { createCar, createDriver, assets } from './assets.js';
 import { applyPaint, tickRainbow } from './paints.js';
 import { studioFloorTexture, podiumNumberTexture, radialTexture } from './textures.js';
 import { Confetti } from './effects.js';
@@ -20,9 +20,9 @@ uniform vec3 glow;
 varying vec3 vDir;
 void main() {
   float h = normalize(vDir).y;
-  vec3 c = mix(bottom, top, smoothstep(-0.1, 0.8, h));
-  float g = pow(max(0.0, 1.0 - abs(h - 0.08) * 3.5), 3.0);
-  c += glow * g * 0.35;
+  vec3 c = mix(bottom, top, smoothstep(0.03, 0.85, h));
+  float g = pow(max(0.0, 1.0 - abs(h - 0.34) * 3.0), 3.0);
+  c += glow * g * 0.16;
   gl_FragColor = vec4(c, 1.0);
 }`;
 
@@ -35,6 +35,72 @@ function backdrop(top, bottom, glow) {
     depthWrite: false
   }));
   return m;
+}
+
+const GARAGE_FOG = 0x0a0e26;
+
+function tyreStack(n, stripe) {
+  const g = new THREE.Group();
+  const tyre = new THREE.TorusGeometry(0.5, 0.24, 10, 28);
+  tyre.rotateX(Math.PI / 2);
+  const rubber = new THREE.MeshStandardMaterial({ color: 0x1d1f26, roughness: 0.85 });
+  const band = new THREE.MeshStandardMaterial({ color: stripe, roughness: 0.5 });
+  const ring = new THREE.CylinderGeometry(0.62, 0.62, 0.1, 28, 1, true);
+  for (let i = 0; i < n; i++) {
+    const t = new THREE.Mesh(tyre, rubber);
+    t.position.y = 0.24 + i * 0.46;
+    t.rotation.y = i * 0.7;
+    const b = new THREE.Mesh(ring, band);
+    b.position.y = t.position.y;
+    g.add(t, b);
+  }
+  return g;
+}
+
+function toolbox() {
+  const g = new THREE.Group();
+  const red = new THREE.MeshStandardMaterial({ color: 0xd8232a, roughness: 0.35, metalness: 0.3 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x1a1c24, roughness: 0.6 });
+  const chrome = new THREE.MeshStandardMaterial({ color: 0xd8dde6, roughness: 0.2, metalness: 1 });
+  const body = new THREE.Mesh(new RoundedBoxGeometry(1.5, 1.3, 0.7, 2, 0.06), red);
+  body.position.y = 0.75;
+  g.add(body);
+  for (let i = 0; i < 4; i++) {
+    const y = 0.35 + i * 0.28;
+    const gap = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.025, 0.02), dark);
+    gap.position.set(0, y + 0.13, 0.355);
+    const handle = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.04, 0.04), chrome);
+    handle.position.set(0, y, 0.37);
+    g.add(gap, handle);
+  }
+  for (const x of [-0.6, 0.6]) {
+    const w = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.06, 12), dark);
+    w.rotation.z = Math.PI / 2;
+    w.position.set(x, 0.08, 0.2);
+    g.add(w);
+  }
+  return g;
+}
+
+function buildStage() {
+  const g = new THREE.Group();
+  const glowA = new THREE.Mesh(new THREE.PlaneGeometry(9, 9), new THREE.MeshBasicMaterial({ map: radialTexture('rgba(255,150,40,0.55)'), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.5 }));
+  glowA.rotation.x = -Math.PI / 2;
+  glowA.position.set(-5.5, 0.02, -6.5);
+  const glowB = glowA.clone();
+  glowB.material = new THREE.MeshBasicMaterial({ map: radialTexture('rgba(60,200,255,0.55)'), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.45 });
+  glowB.position.set(5.5, 0.02, -7.5);
+  const a = tyreStack(3, 0xffd21f);
+  a.position.set(-6.4, 0, -3.6);
+  const b = tyreStack(4, 0xff3b4a);
+  b.position.set(6.2, 0, -8.2);
+  const b2 = tyreStack(2, 0x3bb8ff);
+  b2.position.set(7.4, 0, -6.9);
+  const box = toolbox();
+  box.position.set(-2.6, 0, -8);
+  box.rotation.y = 0.45;
+  g.add(glowA, glowB, a, b, b2, box);
+  return g;
 }
 
 function softbox(w, h, intensity) {
@@ -50,11 +116,11 @@ export class Garage {
     this.envRT = pmrem.fromScene(new RoomEnvironment(), 0.04);
     pmrem.dispose();
     scene.environment = this.envRT.texture;
-    scene.environmentIntensity = 0.55;
-    scene.fog = new THREE.Fog(0x070916, 16, 46);
-    scene.add(backdrop(0x16204f, 0x05060f, 0x3a6bff));
+    scene.environmentIntensity = 0.35;
+    scene.fog = new THREE.Fog(GARAGE_FOG, 13, 38);
+    scene.add(backdrop(0x1c2a70, GARAGE_FOG, 0x3a6bff));
     const floorTex = studioFloorTexture();
-    const floor = new THREE.Mesh(new THREE.CircleGeometry(58, 64), new THREE.MeshStandardMaterial({ map: floorTex, color: 0x3a3f58, roughness: 0.3, metalness: 0.5, envMapIntensity: 0.3 }));
+    const floor = new THREE.Mesh(new THREE.CircleGeometry(58, 64), new THREE.MeshStandardMaterial({ map: floorTex, color: 0x34407a, roughness: 0.35, metalness: 0.35, envMapIntensity: 0.12 }));
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
@@ -76,7 +142,9 @@ export class Garage {
     pool.rotation.x = -Math.PI / 2;
     pool.position.y = 0.01;
     scene.add(pool);
-    const key = new THREE.DirectionalLight(0xffffff, 2.0);
+    this.stage = buildStage();
+    scene.add(this.stage);
+    const key = new THREE.DirectionalLight(0xffffff, 1.6);
     key.position.set(4, 10, 6);
     key.castShadow = true;
     key.shadow.mapSize.set(1024, 1024);
@@ -89,7 +157,7 @@ export class Garage {
     const rimB = new THREE.SpotLight(0xff4fd8, 30, 30, 0.6, 0.6);
     rimB.position.set(8, 5, -6);
     scene.add(rimA, rimB, new THREE.HemisphereLight(0x8aa0ff, 0x101020, 0.35));
-    const sb1 = softbox(8, 1.4, 1.1);
+    const sb1 = softbox(8, 1.4, 0.9);
     sb1.position.set(0, 9, 0);
     sb1.rotation.x = Math.PI / 2;
     scene.add(sb1);
@@ -104,6 +172,9 @@ export class Garage {
   }
 
   setPaint(paint, cheer) {
+    if (assets.headMat) { assets.headMat.emissiveIntensity = 0.1; assets.headMat.color.setHex(0x9a968c); }
+    if (assets.tailMat) assets.tailMat.emissiveIntensity = 0.6;
+    if (assets.trimMat && assets.trimMat.userData.rim) assets.trimMat.userData.rim.value.setRGB(0.22, 0.24, 0.3);
     if (!this.car) {
       this.car = createCar(paint);
       this.car.group.position.y = 0.3;

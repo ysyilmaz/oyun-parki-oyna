@@ -5,6 +5,8 @@ import { questionTexture } from './textures.js';
 export const ITEM_NAMES = { turbo: 'TURBO', shield: 'KALKAN', goo: 'BALÇIK', magnet: 'MIKNATIS' };
 const ITEM_KEYS = ['turbo', 'shield', 'goo', 'magnet'];
 export const MAGNET_SPEED = 46;
+const CAM_NEAR = 2.2;
+const CAM_FADE = 6;
 
 const BOX_VERT = `
 varying vec3 vN;
@@ -35,10 +37,10 @@ void main() {
   vec3 v = normalize(cameraPosition - vWP);
   float fr = pow(1.0 - abs(dot(normalize(vN), v)), 2.0);
   vec4 q = texture2D(qmap, vUv);
-  vec3 col = base * 0.85 + fr * 0.9;
+  vec3 col = base * 0.72 + fr * 0.6;
   float e = max(abs(vUv.x - 0.5), abs(vUv.y - 0.5));
-  col += smoothstep(0.4, 0.5, e) * 1.1;
-  col = mix(col, vec3(1.6), q.a);
+  col += smoothstep(0.4, 0.5, e) * 0.8;
+  col = mix(col, vec3(1.3), q.a);
   gl_FragColor = vec4(col, 0.82 + q.a * 0.18);
 }`;
 
@@ -90,6 +92,7 @@ export class Items {
   update(dt, time) {
     this.boxMat.uniforms.time.value = time;
     const bs = this.boxState;
+    const cam = this.race.camera && this.race.camera.position;
     for (let i = 0; i < bs.length; i++) {
       const b = bs[i];
       if (b.t > 0) { b.t -= dt; b.scale = b.t > 0 ? 0 : 0.01; } else b.scale = Math.min(1, b.scale + dt * 3);
@@ -97,7 +100,11 @@ export class Items {
       this.e.set(0.5 + Math.sin(time + i) * 0.2, time * 1.4 + i, 0.3);
       this.q.setFromEuler(this.e);
       this.v.set(b.x, b.y + Math.sin(time * 2 + i) * 0.25, b.z);
-      const s = b.scale * k;
+      let s = b.scale * k;
+      if (cam) {
+        const dc = Math.hypot(this.v.x - cam.x, this.v.y - cam.y, this.v.z - cam.z);
+        if (dc < CAM_FADE) s *= Math.max(0, (dc - CAM_NEAR) / (CAM_FADE - CAM_NEAR));
+      }
       this.sv.set(s, s, s);
       this.m.compose(this.v, this.q, this.sv);
       this.boxes.setMatrixAt(i, this.m);
@@ -229,6 +236,12 @@ export class Items {
       this.shots.push(s);
       this.race.onMagnetFire(kt, target);
     }
+  }
+
+  warmObjects() {
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(this.gooGeo, this.gooMat), new THREE.Mesh(this.bubbleGeo, this.gooMat), new THREE.Mesh(this.magGeo.mg, this.magMat), new THREE.Mesh(this.magGeo.tipGeo, this.tipMat));
+    return g;
   }
 
   dispose() {

@@ -7,6 +7,8 @@ export const ICONS = {
   magnet: '<svg viewBox="0 0 64 64"><path d="M12 30a20 20 0 0 0 40 0V10H40v20a8 8 0 0 1-16 0V10H12z" fill="#ff2330" stroke="#6a0008" stroke-width="3" stroke-linejoin="round"/><rect x="12" y="8" width="12" height="9" fill="#e8eef8" stroke="#6a0008" stroke-width="3"/><rect x="40" y="8" width="12" height="9" fill="#e8eef8" stroke="#6a0008" stroke-width="3"/><path d="M4 50l6-4M60 50l-6-4M32 60v-6" stroke="#ffd23b" stroke-width="4" stroke-linecap="round"/></svg>'
 };
 
+const KART_ICON = '<svg class="kart" viewBox="0 0 64 44"><rect x="12" y="2" width="40" height="8" rx="3" fill="#ff3b4a" stroke="#111" stroke-width="3"/><rect x="8" y="12" width="48" height="18" rx="7" fill="#ffd21f" stroke="#111" stroke-width="3"/><circle cx="32" cy="10" r="7" fill="#fff" stroke="#111" stroke-width="3"/><rect x="2" y="24" width="14" height="18" rx="5" fill="#222" stroke="#111" stroke-width="2"/><rect x="48" y="24" width="14" height="18" rx="5" fill="#222" stroke="#111" stroke-width="2"/></svg>';
+
 export class Hud {
   constructor() {
     this.el = $('hud');
@@ -21,7 +23,7 @@ export class Hud {
     this.popupEl = $('popup');
     this.wrongEl = $('wrongWay');
     this.magEl = $('magnetWarn');
-    this.magEl.innerHTML = ICONS.magnet + '<svg class="arr" viewBox="0 0 44 26"><path d="M4 4l18 18L40 4" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    this.magEl.innerHTML = '<div class="mw-top"><svg class="warn" viewBox="0 0 40 36"><path d="M20 3L38 33H2z" fill="#ffd21f" stroke="#111" stroke-width="3" stroke-linejoin="round"/><path d="M20 13v10" stroke="#111" stroke-width="4.5" stroke-linecap="round"/><circle cx="20" cy="28.5" r="2.6" fill="#111"/></svg><span>ARKANDA!</span></div><div class="mw-row">' + ICONS.magnet + '<svg class="chev" viewBox="0 0 48 30"><path d="M4 4l11 11L4 26M20 4l11 11-11 11M36 4l8 11-8 11" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>' + KART_ICON + '<span class="mw-shield"><span class="kc">SPACE</span>' + ICONS.shield + '</span></div>';
     this.mini = $('minimap');
     this.speedo = $('speedo');
     this.mctx = this.mini.getContext('2d');
@@ -73,11 +75,13 @@ export class Hud {
 
   setTime(t) { this.set('time', this.lapTime, fmt(t)); }
 
-  setItem(item, rolling, t) {
+  setItem(item, rolling, t, queued) {
+    this.itemSlot.classList.toggle('queued', !!(rolling && queued));
     if (rolling) {
       const k = this.rouletteKeys[Math.floor(t * 14) % 4];
       this.set('item', this.itemIcon, 'r' + k, () => { this.itemIcon.innerHTML = ICONS[k]; });
       this.itemSlot.classList.add('rolling');
+      this.itemSlot.classList.remove('has');
       return;
     }
     this.itemSlot.classList.remove('rolling');
@@ -112,8 +116,16 @@ export class Hud {
 
   wrong(v) { this.set('wrong', this.wrongEl, v, x => this.wrongEl.classList.toggle('hidden', !x)); }
 
-  magnet(level) {
+  magnet(level, shieldReady) {
     this.set('magnet', this.magEl, level, x => { this.magEl.classList.toggle('hidden', !x); this.magEl.classList.toggle('near', x === 2); });
+    this.set('magShield', this.magEl, !!shieldReady, x => this.magEl.classList.toggle('shield', x));
+  }
+
+  explainGasLock(ms) {
+    const el = this.gasLockEl;
+    el.classList.add('explain');
+    clearTimeout(this.explainT);
+    this.explainT = setTimeout(() => el.classList.remove('explain'), ms);
   }
 
   buildMinimap(track, theme) {
@@ -184,6 +196,9 @@ export class Hud {
   }
 
   drawSpeedo(ratio, kmh, boost, driftLevel, driftCharge) {
+    const key = kmh + '|' + boost + '|' + driftLevel + '|' + Math.round(driftCharge * 30);
+    if (key === this.speedoKey) return;
+    this.speedoKey = key;
     const g = this.sctx;
     const S = this.speedo.width;
     const cx = S / 2, cy = S / 2 + 6, R = S * 0.42;
@@ -250,16 +265,14 @@ export class Hud {
   }
 }
 
-export function fmt(t) {
+function clock(t, digits) {
   if (!isFinite(t) || t < 0) t = 0;
-  const m = Math.floor(t / 60);
-  const s = t - m * 60;
-  return `${m}:${s < 10 ? '0' : ''}${s.toFixed(1)}`;
+  const k = 10 ** digits;
+  const u = Math.round(t * k);
+  const m = Math.floor(u / (60 * k));
+  const s = (u - m * 60 * k) / k;
+  return `${m}:${s < 10 ? '0' : ''}${s.toFixed(digits)}`;
 }
 
-export function fmt2(t) {
-  if (!isFinite(t) || t < 0) t = 0;
-  const m = Math.floor(t / 60);
-  const s = t - m * 60;
-  return `${m}:${s < 10 ? '0' : ''}${s.toFixed(2)}`;
-}
+export const fmt = t => clock(t, 1);
+export const fmt2 = t => clock(t, 2);

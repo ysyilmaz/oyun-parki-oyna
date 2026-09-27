@@ -9,6 +9,9 @@ const GRAVITY = 24;
 export const DRIFT_LEVELS = [0.8, 1.6, 2.5];
 const DRIFT_BOOST = [0, 0.7, 1.1, 1.6];
 const PAD_BOOST = 1.0;
+const WALL_HINT_T = 1.4;
+const WALL_RESPAWN_T = 2.6;
+const WRONG_RESPAWN_T = 1.6;
 export const SPARK_COLORS = [[1.0, 0.9, 0.6], [0.35, 0.7, 2.6], [2.6, 1.1, 0.15], [1.8, 0.4, 2.6]];
 
 const wrapAngle = a => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
@@ -22,7 +25,7 @@ export class Kart {
     this.name = name;
     this.skill = skill;
     this.robotColor = robotColor;
-    const car = createCar(paint, isPlayer ? 'high' : 'low');
+    const car = createCar(paint, isPlayer ? 'race' : 'low');
     this.car = car;
     this.obj = car.group;
     this.x = 0; this.z = 0; this.y = 0; this.vy = 0;
@@ -266,16 +269,17 @@ export class Kart {
     if (racing && this.spinT <= 0) {
       const wantGo = gas && !this.finished;
       if (wantGo && Math.abs(this.fwd) < 2.2) this.stuckT += dt; else this.stuckT = 0;
-      if (this.stuckT > (this.isPlayer && this.wallRecent > 0 ? 3.0 : 1.0)) this.respawn();
+      if (this.stuckT > (this.isPlayer && this.wallRecent > 0 ? WALL_RESPAWN_T : 1.0)) this.respawn();
       this.moveSpd += (Math.hypot(this.x - x0, this.z - z0) / dt - this.moveSpd) * Math.min(1, dt * 6);
       if (wantGo && this.wallRecent > 0 && this.moveSpd < 2.5) this.wallStuckT += dt; else this.wallStuckT = 0;
-      if (this.wallStuckT > 2.0 && !this.wallStuckShown) { this.wallStuckShown = true; this.race.onWallStuck(this); }
+      if (this.wallStuckT > WALL_HINT_T && !this.wallStuckShown) { this.wallStuckShown = true; this.race.onWallStuck(this); }
+      if (this.isPlayer && this.wallStuckT > WALL_RESPAWN_T) this.respawn();
       if (this.wallStuckT === 0) this.wallStuckShown = false;
       if (alat > tr.halfWall + 2 || this.y < g - 6) this.respawn();
       const th = Math.atan2(p.tx, p.tz);
       const dd = Math.abs(wrapAngle(th - this.heading));
-      if (dd > 1.9 && Math.abs(this.fwd) > 2) this.wrongT += dt; else this.wrongT = Math.max(0, this.wrongT - dt * 2);
-      if (this.wrongT > 2.8) { this.wrongT = 0; this.respawn(); }
+      if (dd > 1.75 && Math.abs(this.fwd) > 1.2) this.wrongT += dt; else this.wrongT = Math.max(0, this.wrongT - dt * 2);
+      if (this.wrongT > WRONG_RESPAWN_T) { this.wrongT = 0; this.respawn(); }
     }
     this.wheelSpin += this.fwd * dt / WHEEL_R;
   }
@@ -320,6 +324,8 @@ export class Kart {
     this.drift.active = false;
     this.spinT = 0;
     this.stuckT = 0;
+    this.wallStuckT = 0;
+    this.wrongT = 0;
     this.invulnT = 1.5;
     this.hint = -1;
     tr.project(this.x, this.z, -1, this.p);
@@ -425,10 +431,12 @@ export class Kart {
     const ch = this.car.chassis;
     ch.position.y = -this.squash * 0.12 + (this.onCurb ? Math.sin(time * 70) * 0.025 : 0) + (this.offroad ? Math.sin(time * 40) * 0.02 : 0);
     const w = this.car.wheels;
-    for (let i = 0; i < 4; i++) w[i].rotation.x = this.wheelSpin;
-    const st = -this.steer * 0.42;
-    w[0].rotation.y = st;
-    w[1].rotation.y = st;
+    if (w.length) {
+      for (let i = 0; i < 4; i++) w[i].rotation.x = this.wheelSpin;
+      const st = -this.steer * 0.42;
+      w[0].rotation.y = st;
+      w[1].rotation.y = st;
+    }
     const gy = tr.groundY(this.p);
     this.car.shadow.position.y = Math.min(0.02, gy - this.y + 0.02);
     const air = this.y - gy;

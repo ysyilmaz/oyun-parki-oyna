@@ -86,7 +86,7 @@ function gradientSky(top, mid, bottom, glowColor, glowDir, stars) {
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), m);
   mesh.scale.setScalar(3000);
   mesh.frustumCulled = false;
-  mesh.renderOrder = -10;
+  mesh.renderOrder = 999;
   return mesh;
 }
 
@@ -179,7 +179,7 @@ function strip(geo) {
 }
 
 function palmGeometries() {
-  const trunk = new THREE.CylinderGeometry(0.22, 0.36, 9, 8, 12);
+  const trunk = new THREE.CylinderGeometry(0.22, 0.36, 9, 7, 5, true);
   trunk.translate(0, 4.5, 0);
   const tp = trunk.attributes.position;
   for (let i = 0; i < tp.count; i++) {
@@ -193,7 +193,7 @@ function palmGeometries() {
   });
   const nuts = [];
   for (let k = 0; k < 3; k++) {
-    const s = new THREE.SphereGeometry(0.22, 6, 5);
+    const s = new THREE.SphereGeometry(0.22, 5, 4);
     s.translate(1.6 + Math.cos(k * 2.1) * 0.3, 8.7, Math.sin(k * 2.1) * 0.3);
     colorize(s, () => [0.3, 0.2, 0.08]);
     nuts.push(strip(s));
@@ -202,7 +202,7 @@ function palmGeometries() {
   const leaves = [];
   const count = 8;
   for (let k = 0; k < count; k++) {
-    const leaf = new THREE.PlaneGeometry(1.3, 5, 2, 8);
+    const leaf = new THREE.PlaneGeometry(1.3, 5, 2, 5);
     const lp = leaf.attributes.position;
     for (let i = 0; i < lp.count; i++) {
       const x = lp.getX(i), y = lp.getY(i) + 2.5;
@@ -242,6 +242,60 @@ function treeGeometries(seed, colA, colB) {
   return { trunk: strip(trunk), crown: mergeGeometries(blobs) };
 }
 
+function bakeSky(renderer, sky, center) {
+  const rt = new THREE.WebGLCubeRenderTarget(768, { type: THREE.HalfFloatType });
+  const cam = new THREE.CubeCamera(1, 10000, rt);
+  cam.position.set(center.x, 4, center.z);
+  const sc = new THREE.Scene();
+  sky.position.copy(cam.position);
+  sc.add(sky);
+  const prev = renderer.getRenderTarget();
+  cam.update(renderer, sc);
+  renderer.setRenderTarget(prev);
+  sky.geometry.dispose();
+  sky.material.dispose();
+  return rt;
+}
+
+const CHUNK_MIN_TRIS = 20000;
+const SHADOW_R = 64;
+const SHADOW_SNAP = 12;
+
+export function chunkInstances(root) {
+  const list = [];
+  const tris = g => (g.index ? g.index.count : g.attributes.position.count) / 3;
+  root.traverse(o => { if (o.isInstancedMesh && o.frustumCulled && o.parent && o.count * tris(o.geometry) >= CHUNK_MIN_TRIS) list.push(o); });
+  const m = new THREE.Matrix4(), c = new THREE.Color();
+  for (const im of list) {
+    const n = im.count, arr = im.instanceMatrix.array;
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (let i = 0; i < n; i++) { const x = arr[i * 16 + 12], z = arr[i * 16 + 14]; x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+    const cell = Math.max(80, Math.max(x1 - x0, z1 - z0) / 3 + 1e-3);
+    const buckets = new Map();
+    for (let i = 0; i < n; i++) {
+      const key = Math.floor((arr[i * 16 + 12] - x0) / cell) * 64 + Math.floor((arr[i * 16 + 14] - z0) / cell);
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(i);
+    }
+    if (buckets.size < 2) continue;
+    for (const idx of buckets.values()) {
+      const ch = new THREE.InstancedMesh(im.geometry, im.material, idx.length);
+      idx.forEach((i, k) => {
+        im.getMatrixAt(i, m);
+        ch.setMatrixAt(k, m);
+        if (im.instanceColor) { im.getColorAt(i, c); ch.setColorAt(k, c); }
+      });
+      ch.castShadow = im.castShadow;
+      ch.receiveShadow = im.receiveShadow;
+      ch.renderOrder = im.renderOrder;
+      ch.computeBoundingSphere();
+      im.parent.add(ch);
+    }
+    im.parent.remove(im);
+    im.dispose();
+  }
+}
+
 function bakeEnv(pmrem, envScene, sigma, near, far) {
   const rt = pmrem.fromScene(envScene, sigma, near, far);
   envScene.traverse(o => {
@@ -267,13 +321,14 @@ export function buildWorld(track, renderer, scene, trackVisual) {
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   const sc = sun.shadow.camera;
-  sc.left = -55; sc.right = 55; sc.top = 55; sc.bottom = -55; sc.near = 1; sc.far = 400;
+  sc.left = -SHADOW_R; sc.right = SHADOW_R; sc.top = SHADOW_R; sc.bottom = -SHADOW_R; sc.near = 1; sc.far = 400;
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.04;
   sun.shadow.radius = 3;
   scene.add(sun, sun.target, hemi);
 
   let envRT;
+  let skyRT = null;
   let fogCol;
   if (theme === 'beach') {
     sunDir = new THREE.Vector3(0.62, 0.52, -0.58).normalize();
@@ -288,8 +343,9 @@ export function buildWorld(track, renderer, scene, trackVisual) {
     u.cloudCoverage.value = 0.38;
     u.cloudDensity.value = 0.5;
     u.cloudScale.value = 0.00025;
-    group.add(sky);
-    updaters.push((dt, time) => { u.time.value = time; });
+    u.time.value = 20;
+    skyRT = bakeSky(renderer, sky, { x: cx, z: cz });
+    scene.background = skyRT.texture;
     const envScene = new THREE.Scene();
     const sky2 = scaledSky(0.42);
     sky2.scale.setScalar(100);
@@ -472,6 +528,7 @@ export function buildWorld(track, renderer, scene, trackVisual) {
   const clips = ['Dance', 'Wave', 'Dance', 'ThumbsUp'];
   (trackVisual.standSpots || []).slice(0, 4).forEach((sp, n) => {
     const rb = createDriver(robotColors[n % 4], clips[n % 4], 2.1);
+    rb.holder.traverse(o => { o.castShadow = false; });
     rb.holder.position.set(sp.x, sp.y, sp.z);
     rb.holder.rotation.y = sp.yaw;
     group.add(rb.holder);
@@ -486,16 +543,25 @@ export function buildWorld(track, renderer, scene, trackVisual) {
     theme,
     envRT,
     update(dt, time, focus) {
-      sun.position.copy(focus).addScaledVector(sunDir, 150);
-      sun.target.position.copy(focus);
+      const sx = Math.round(focus.x / SHADOW_SNAP) * SHADOW_SNAP, sy = Math.round(focus.y / SHADOW_SNAP) * SHADOW_SNAP, sz = Math.round(focus.z / SHADOW_SNAP) * SHADOW_SNAP;
+      if (sx !== sun.target.position.x || sy !== sun.target.position.y || sz !== sun.target.position.z || !this.shadowReady) {
+        this.shadowReady = true;
+        sun.target.position.set(sx, sy, sz);
+        sun.position.copy(sun.target.position).addScaledVector(sunDir, 150);
+        sun.target.updateMatrixWorld();
+        sun.updateMatrixWorld();
+        renderer.shadowMap.needsUpdate = true;
+      }
       updaters.forEach(u => u(dt, time));
     },
     dispose() {
       scene.remove(group, sun, sun.target, hemi);
       envRT.dispose();
+      if (skyRT) { skyRT.dispose(); scene.background = null; }
       sun.shadow.dispose();
       group.traverse(o => {
         if (o.geometry) o.geometry.dispose();
+        if (o.isInstancedMesh) o.dispose();
       });
     }
   };
@@ -573,10 +639,14 @@ function buildTerrain(track, theme, group) {
   geo.computeVertexNormals();
   const nt = T.noiseTexture(21, 256, 90);
   nt.repeat.set(120, 120);
-  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, map: nt, roughness: 0.95 }));
-  mesh.position.set(cx, 0, cz);
-  mesh.receiveShadow = true;
-  group.add(mesh);
+  const terrainMat = new THREE.MeshStandardMaterial({ vertexColors: true, map: nt, roughness: 0.95 });
+  for (const tile of tileGrid(geo, seg, 3)) {
+    const mesh = new THREE.Mesh(tile, terrainMat);
+    mesh.position.set(cx, 0, cz);
+    mesh.receiveShadow = true;
+    group.add(mesh);
+  }
+  geo.dispose();
   const step = size / seg;
   const height = (x, z) => {
     const gx = (x - cx + size / 2) / step, gz = (z - cz + size / 2) / step;
@@ -587,6 +657,36 @@ function buildTerrain(track, theme, group) {
     return h00 * (1 - fx) * (1 - fz) + h10 * fx * (1 - fz) + h01 * (1 - fx) * fz + h11 * fx * fz;
   };
   return { height };
+}
+
+function tileGrid(geo, seg, tiles) {
+  const out = [];
+  const cols = seg + 1;
+  const step = Math.ceil(seg / tiles);
+  for (let ty = 0; ty < seg; ty += step) {
+    for (let tx = 0; tx < seg; tx += step) {
+      const nx = Math.min(step, seg - tx) + 1, ny = Math.min(step, seg - ty) + 1;
+      const g = new THREE.BufferGeometry();
+      for (const [name, attr] of Object.entries(geo.attributes)) {
+        const sz = attr.itemSize, src = attr.array;
+        const dst = new Float32Array(nx * ny * sz);
+        for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
+          const si = ((ty + y) * cols + tx + x) * sz, di = (y * nx + x) * sz;
+          for (let k = 0; k < sz; k++) dst[di + k] = src[si + k];
+        }
+        g.setAttribute(name, new THREE.BufferAttribute(dst, sz));
+      }
+      const idx = [];
+      for (let y = 0; y < ny - 1; y++) for (let x = 0; x < nx - 1; x++) {
+        const a = y * nx + x, b = a + nx, c = b + 1, d = a + 1;
+        idx.push(a, b, d, b, c, d);
+      }
+      g.setIndex(idx);
+      g.computeBoundingSphere();
+      out.push(g);
+    }
+  }
+  return out;
 }
 
 function cityGroundTexture() {

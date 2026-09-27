@@ -311,6 +311,19 @@ export function podiumNumberTexture(n, col) {
   return tex(c);
 }
 
+export function numberTexture(text) {
+  const [c, g] = canvas(128, 96);
+  g.font = 'italic 900 84px "Arial Black", "Segoe UI Black", sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.lineWidth = 10;
+  g.strokeStyle = '#ffd21f';
+  g.strokeText(text, 64, 52);
+  g.fillStyle = '#111';
+  g.fillText(text, 64, 52);
+  return tex(c);
+}
+
 export function studioFloorTexture() {
   const [c, g] = canvas(512, 512);
   const grd = g.createRadialGradient(256, 256, 20, 256, 256, 256);

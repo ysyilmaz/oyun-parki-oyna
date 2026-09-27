@@ -73,8 +73,10 @@ export class Particles {
   }
 
   update(dt) {
+    let dirty = false;
     for (let i = 0; i < this.max; i++) {
-      if (this.life[i] <= 0) { if (this.alpha[i] !== 0) { this.alpha[i] = 0; this.size[i] = 0; } continue; }
+      if (this.life[i] <= 0) { if (this.alpha[i] !== 0) { this.alpha[i] = 0; this.size[i] = 0; dirty = true; } continue; }
+      dirty = true;
       this.life[i] -= dt;
       const t = 1 - Math.max(0, this.life[i]) / this.maxLife[i];
       const k = Math.max(0, 1 - this.drag[i] * dt);
@@ -85,6 +87,7 @@ export class Particles {
       this.size[i] = this.s0[i] + (this.s1[i] - this.s0[i]) * t;
       this.alpha[i] = this.a0[i] * (t < 0.1 ? t / 0.1 : 1 - (t - 0.1) / 0.9);
     }
+    if (!dirty) return;
     const a = this.geo.attributes;
     a.position.needsUpdate = true;
     a.aColor.needsUpdate = true;
@@ -119,6 +122,8 @@ export class SkidMarks {
     this.mesh.renderOrder = 3;
     this.prev = new Map();
     this.dirty = false;
+    this.lo = Infinity;
+    this.hi = 0;
   }
 
   mark(key, x, y, z, px, pz, w, active) {
@@ -136,17 +141,27 @@ export class SkidMarks {
       a[o + 6] = x - px * w; a[o + 7] = y; a[o + 8] = z - pz * w;
       a[o + 9] = x + px * w; a[o + 10] = y; a[o + 11] = z + pz * w;
       this.dirty = true;
+      this.lo = Math.min(this.lo, o);
+      this.hi = Math.max(this.hi, o + 12);
     }
     this.prev.set(key, { x, y, z, px, pz });
   }
 
   update() {
-    if (this.dirty) { this.geo.attributes.position.needsUpdate = true; this.dirty = false; }
+    if (!this.dirty) return;
+    const attr = this.geo.attributes.position;
+    attr.clearUpdateRanges();
+    attr.addUpdateRange(this.lo, this.hi - this.lo);
+    attr.needsUpdate = true;
+    this.dirty = false;
+    this.lo = Infinity;
+    this.hi = 0;
   }
 
   clear() {
     this.pos.fill(0);
     this.prev.clear();
+    this.geo.attributes.position.clearUpdateRanges();
     this.geo.attributes.position.needsUpdate = true;
   }
 }
@@ -213,8 +228,14 @@ export class Confetti {
   }
 
   update(dt) {
+    let alive = 0;
     for (let i = 0; i < this.count; i++) {
-      if (this.life[i] <= 0) continue;
+      if (this.life[i] <= 0) {
+        if (this.life[i] !== -1) { this.life[i] = -1; this.m.makeScale(0, 0, 0); this.mesh.setMatrixAt(i, this.m); this.dirty = true; }
+        continue;
+      }
+      alive++;
+      this.dirty = true;
       this.life[i] -= dt;
       const o = i * 3;
       this.v[o + 1] -= 9 * dt;
@@ -232,7 +253,8 @@ export class Confetti {
       this.m.compose(this.t, this.q, this.s);
       this.mesh.setMatrixAt(i, this.m);
     }
-    this.mesh.instanceMatrix.needsUpdate = true;
+    this.mesh.visible = alive > 0;
+    if (this.dirty) { this.mesh.instanceMatrix.needsUpdate = true; this.dirty = false; }
   }
 }
 
@@ -240,43 +262,43 @@ export class SpeedLines {
   constructor(canvas) {
     this.c = canvas;
     this.g = canvas.getContext('2d');
-    this.lines = [];
-    for (let i = 0; i < 70; i++) this.lines.push(this.spawn({}));
     this.level = 0;
-  }
-
-  spawn(l) {
-    l.a = Math.random() * Math.PI * 2;
-    l.r = 0.25 + Math.random() * 0.5;
-    l.v = 1.2 + Math.random() * 1.6;
-    l.len = 0.06 + Math.random() * 0.12;
-    return l;
+    this.shown = -1;
+    this.tint = '';
   }
 
   resize(w, h) {
     this.c.width = Math.round(w / 2);
     this.c.height = Math.round(h / 2);
+    this.tint = '';
+  }
+
+  paint(tint) {
+    this.tint = tint;
+    const g = this.g, w = this.c.width, h = this.c.height;
+    g.clearRect(0, 0, w, h);
+    const cx = w / 2, cy = h * 0.45, R = Math.hypot(w, h) * 0.6;
+    g.lineCap = 'round';
+    for (let i = 0; i < 90; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = 0.4 + Math.random() * 0.55, len = 0.06 + Math.random() * 0.14;
+      const r0 = r * R, r1 = (r + len) * R;
+      g.strokeStyle = tint.replace('A', (0.25 + Math.random() * 0.35).toFixed(2));
+      g.lineWidth = 1.5 + len * 14;
+      g.beginPath();
+      g.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0 * 0.75);
+      g.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1 * 0.75);
+      g.stroke();
+    }
   }
 
   draw(dt, level, tint) {
     this.level += (level - this.level) * Math.min(1, dt * 6);
-    const g = this.g, w = this.c.width, h = this.c.height;
-    g.clearRect(0, 0, w, h);
-    if (this.level < 0.03) return;
-    const cx = w / 2, cy = h * 0.45, R = Math.hypot(w, h) * 0.6;
-    g.lineCap = 'round';
-    for (const l of this.lines) {
-      l.r += l.v * dt * (0.6 + this.level);
-      if (l.r > 1.1) this.spawn(l);
-      const r0 = l.r * R, r1 = (l.r + l.len) * R;
-      if (l.r < 0.35) continue;
-      const a = Math.min(1, (l.r - 0.35) * 3) * this.level * 0.55;
-      g.strokeStyle = tint.replace('A', a.toFixed(3));
-      g.lineWidth = 1.5 + l.len * 14;
-      g.beginPath();
-      g.moveTo(cx + Math.cos(l.a) * r0, cy + Math.sin(l.a) * r0 * 0.75);
-      g.lineTo(cx + Math.cos(l.a) * r1, cy + Math.sin(l.a) * r1 * 0.75);
-      g.stroke();
-    }
+    const v = this.level < 0.03 ? 0 : Math.round(Math.min(1, this.level) * 20) / 20;
+    if (v > 0 && tint !== this.tint) this.paint(tint);
+    if (v === this.shown) return;
+    this.shown = v;
+    this.c.style.opacity = v;
+    this.c.classList.toggle('on', v > 0);
   }
 }

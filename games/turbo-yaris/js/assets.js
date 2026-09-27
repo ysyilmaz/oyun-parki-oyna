@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { makePaintMaterial } from './paints.js';
-import { blobShadowTexture } from './textures.js';
+import { makePaintMaterial, rimLit } from './paints.js';
+import { blobShadowTexture, numberTexture } from './textures.js';
 
 export const WHEEL_R = 0.46;
 
@@ -128,11 +128,11 @@ function headParts(out, r, helmetColor, stripe) {
   const hc = helmetColor == null ? 0xffffff : helmetColor;
   const win = 0.85;
   const add = (list, g, c) => list.push(part(g, c));
-  add(shell, SPH(r, 14, 9, Math.PI / 2 + win, Math.PI * 2 - win * 2, 0, Math.PI), hc);
-  add(shell, SPH(r, 6, 4, Math.PI / 2 - win, win * 2, 0, 0.78), hc);
-  add(shell, SPH(r, 6, 3, Math.PI / 2 - win, win * 2, 2.3, Math.PI - 2.3), hc);
-  add(out.glass, SPH(r * 1.05, 10, 2, Math.PI / 2 - 0.98, 1.96, 0.5, 0.36), 0x151a26);
-  const band = new THREE.TorusGeometry(r * 1.015, r * 0.1, 3, 12, Math.PI - 0.95);
+  add(shell, SPH(r, 28, 18, Math.PI / 2 + win, Math.PI * 2 - win * 2, 0, Math.PI), hc);
+  add(shell, SPH(r, 10, 7, Math.PI / 2 - win, win * 2, 0, 0.78), hc);
+  add(shell, SPH(r, 10, 5, Math.PI / 2 - win, win * 2, 2.3, Math.PI - 2.3), hc);
+  add(out.glass, SPH(r * 1.05, 16, 4, Math.PI / 2 - 0.98, 1.96, 0.5, 0.36), 0x151a26);
+  const band = new THREE.TorusGeometry(r * 1.015, r * 0.1, 5, 24, Math.PI - 0.95);
   band.rotateZ(0.95);
   band.rotateY(-Math.PI / 2);
   add(out.gloss, band, stripe);
@@ -156,27 +156,31 @@ function buildKart() {
     paint.push(part(rbox(0.44, 0.42, 1.2, 0.16, 1), 0xffffff, M(s * 0.8, 0.5, -0.1)));
     trim.push(part(BOX(0.3, 0.18, 0.06), 0x15171d, M(s * 0.8, 0.5, 0.5)));
     gloss.push(part(BOX(0.03, 0.09, 1.0), 0xffffff, M(s * 1.02, 0.56, -0.1)));
-    trim.push(part(rbox(0.08, 0.5, 0.7, 0.035), 0x1d2028, M(s * 1.02, 1.3, -1.62)));
+    paint.push(part(rbox(0.08, 0.56, 0.74, 0.035), 0xffffff, M(s * 1.02, 1.3, -1.62)));
+    gloss.push(part(BOX(0.09, 0.08, 0.76), 0xffffff, M(s * 1.02, 1.1, -1.62)));
     trim.push(part(BOX(0.08, 0.56, 0.14), 0x2a2d36, M(s * 0.42, 1.08, -1.52, 0.15, 0, 0)));
     metal.push(part(CYL(0.1, 0.085, 0.62, 10), 0xd8dde6, M(s * 0.36, 0.6, -1.78, Math.PI / 2, 0, 0)));
     metal.push(part(CYL(0.11, 0.11, 0.06, 10), 0x5a606c, M(s * 0.36, 0.6, -2.08, Math.PI / 2, 0, 0)));
     head.push(part(CYL(0.12, 0.12, 0.06, 12), 0xffffff, M(s * 0.34, 0.6, 1.9, Math.PI / 2 - 0.5, 0, 0)));
-    tail.push(part(BOX(0.3, 0.12, 0.06), 0xffffff, M(s * 0.6, 0.42, -2.0)));
+    tail.push(part(rbox(0.34, 0.16, 0.08, 0.04), 0xffffff, M(s * 0.6, 0.44, -2.02)));
     trim.push(limb(new THREE.Vector3(s * 0.48, 0.42, -1.05), new THREE.Vector3(s * 0.76, 0.48, -1.05), 0.06, 0x2a2d36));
     trim.push(limb(new THREE.Vector3(s * 0.4, 0.36, 1.25), new THREE.Vector3(s * 0.74, 0.42, 1.25), 0.05, 0x2a2d36));
   }
   paint.push(part(taper(rbox(0.8, 0.52, 0.9, 0.2, 1), 0.9, 0.8, 0.7), 0xffffff, M(0, 0.94, -1.0, 0, Math.PI, 0)));
   paint.push(part(rbox(2.1, 0.14, 0.6, 0.06, 1), 0xffffff, M(0, 1.55, -1.64, -0.14, 0, 0)));
   gloss.push(part(BOX(2.11, 0.04, 0.12), 0xffffff, M(0, 1.6, -1.4, -0.14, 0, 0)));
-  trim.push(part(BOX(1.5, 0.12, 3.3), 0x22252d, M(0, 0.28, -0.1)));
+  trim.push(part(BOX(1.5, 0.12, 3.3), 0x3a3f4b, M(0, 0.28, -0.1)));
+  tail.push(part(BOX(0.84, 0.07, 0.05), 0xffffff, M(0, 0.44, -2.04)));
+  paint.push(part(rbox(1.66, 0.1, 0.3, 0.04, 1), 0xffffff, M(0, 0.17, -1.92)));
   trim.push(part(rbox(1.84, 0.22, 0.3, 0.1, 1), 0x2a2d36, M(0, 0.32, 2.06)));
   trim.push(part(BOX(0.18, 0.12, 0.34), 0x2a2d36, M(0.55, 0.3, 1.88)));
   trim.push(part(BOX(0.18, 0.12, 0.34), 0x2a2d36, M(-0.55, 0.3, 1.88)));
   trim.push(part(BOX(0.6, 0.14, 0.06), 0x15171d, M(0, 0.5, 1.95)));
-  trim.push(part(rbox(1.62, 0.22, 0.26, 0.09, 1), 0x2a2d36, M(0, 0.3, -1.9)));
+  trim.push(part(rbox(1.62, 0.22, 0.26, 0.09, 1), 0x4a505e, M(0, 0.3, -1.9)));
   trim.push(part(BOX(0.92, 0.07, 1.0), 0x15171d, M(0, 0.82, -0.2)));
   trim.push(part(rbox(0.74, 0.74, 0.18, 0.08, 1), 0x30343e, M(0, 1.04, -0.66, -0.2, 0, 0)));
-  trim.push(part(BOX(0.66, 0.26, 0.44), 0x3a3f4b, M(0, 0.62, -1.46)));
+  trim.push(part(BOX(0.66, 0.26, 0.44), 0x555b69, M(0, 0.62, -1.46)));
+  gloss.push(part(rbox(0.66, 0.42, 0.04, 0.1, 2), 0xf2f3f7, M(0, 1.14, -1.58)));
   gloss.push(part(CYL(0.24, 0.24, 0.03, 14), 0xffffff, M(0, 0.76, 1.24, -0.28, 0, 0)));
   gloss.push(part(CYL(0.14, 0.14, 0.035, 12), 0x2a2d36, M(0, 0.765, 1.24, -0.28, 0, 0)));
   trim.push(part(new THREE.TorusGeometry(0.19, 0.035, 4, 12), 0x1d2028, M(0, 1.02, 0.36, -0.55, 0, 0)));
@@ -187,23 +191,30 @@ function buildKart() {
   hp.paint.forEach(g => { g.applyMatrix4(hm); paint.push(g); });
   hp.gloss.forEach(g => { g.applyMatrix4(hm); gloss.push(g); });
   hp.glass.forEach(g => { g.applyMatrix4(hm); glass.push(g); });
-  gloss.push(part(rbox(0.62, 0.5, 0.42, 0.18, 1), 0xf2f3f7, M(0, 1.02, -0.34)));
+  gloss.push(part(rbox(0.62, 0.5, 0.42, 0.18, 1), 0xd9dce4, M(0, 1.02, -0.34)));
   gloss.push(part(CYL(0.13, 0.15, 0.1, 8), 0x2a2d36, M(0, 1.28, -0.32)));
   for (const s of [-1, 1]) {
-    gloss.push(limb(new THREE.Vector3(s * 0.3, 1.14, -0.3), new THREE.Vector3(s * 0.24, 1.0, 0.1), 0.075, 0xf2f3f7));
-    gloss.push(limb(new THREE.Vector3(s * 0.24, 1.0, 0.1), new THREE.Vector3(s * 0.17, 1.05, 0.3), 0.07, 0xf2f3f7));
+    gloss.push(limb(new THREE.Vector3(s * 0.3, 1.14, -0.3), new THREE.Vector3(s * 0.24, 1.0, 0.1), 0.075, 0xd9dce4));
+    gloss.push(limb(new THREE.Vector3(s * 0.24, 1.0, 0.1), new THREE.Vector3(s * 0.17, 1.05, 0.3), 0.07, 0xd9dce4));
     gloss.push(part(SPH(0.08, 6, 4), 0x2a2d36, M(s * 0.17, 1.05, 0.33)));
   }
-  const wheels = W.map(([x, y, z, R, w]) => ({ pos: new THREE.Vector3(x, y, z), ...buildWheel(R, w, Math.sign(x)) }));
-  return {
-    body: { paint: merge(paint), trim: merge(trim), gloss: merge(gloss), metal: merge(metal), glass: merge(glass), head: merge(head), tail: merge(tail) },
-    wheels
-  };
+  const wheels = W.map(([x, y, z, R, w]) => {
+    const wh = buildWheel(R, w, Math.sign(x));
+    const low = mergeGeometries([wh.tire, wh.rim], false);
+    low.userData.keep = true;
+    return { pos: new THREE.Vector3(x, y, z), low, ...wh };
+  });
+  const body = { paint: merge(paint), trim: merge(trim), gloss: merge(gloss), metal: merge(metal), glass: merge(glass), head: merge(head), tail: merge(tail) };
+  const placed = wheels.map(w => w.low.clone().translate(w.pos.x, w.pos.y, w.pos.z));
+  const low = { trim: mergeGeometries([body.trim, body.metal], false), gloss: mergeGeometries([body.gloss, body.glass], false), wheels: mergeGeometries(placed, false) };
+  placed.forEach(g => g.dispose());
+  for (const g of Object.values(low)) g.userData.keep = true;
+  return { body, low, wheels };
 }
 
 function initShared() {
   const std = (o) => { const m = new THREE.MeshStandardMaterial(Object.assign({ vertexColors: true }, o)); assets.shared.push(m); return m; };
-  assets.trimMat = std({ roughness: 0.55, metalness: 0.15 });
+  assets.trimMat = rimLit(std({ roughness: 0.55, metalness: 0.15 }), new THREE.Color(0.22, 0.24, 0.3));
   assets.metalMat = std({ roughness: 0.22, metalness: 0.95 });
   assets.tireMat = std({ roughness: 0.88, metalness: 0 });
   assets.rimMat = std({ roughness: 0.25, metalness: 0.85 });
@@ -219,6 +230,10 @@ export async function loadAssets(onProgress) {
   initShared();
   assets.kart = buildKart();
   assets.shadowTex = blobShadowTexture();
+  assets.numberGeo = new THREE.PlaneGeometry(0.5, 0.36);
+  assets.numberGeo.userData.keep = true;
+  assets.numberMat = new THREE.MeshStandardMaterial({ map: numberTexture('1'), transparent: true, roughness: 0.4, polygonOffset: true, polygonOffsetFactor: -2 });
+  assets.shared.push(assets.numberMat);
   assets.shadowGeo = new THREE.PlaneGeometry(2.5, 4.4);
   assets.shadowGeo.userData.keep = true;
   if (onProgress) onProgress(1);
@@ -241,23 +256,34 @@ export function createCar(paint, lod = 'high') {
   const chassis = new THREE.Group();
   group.add(chassis);
   const b = k.body;
-  const mats = [[b.paint, bodyMat], [b.trim, assets.trimMat], [b.gloss, assets.glossMat], [b.metal, assets.metalMat], [b.glass, assets.glassMat], [b.head, assets.headMat], [b.tail, assets.tailMat]];
+  const lo = k.low;
+  const mats = high
+    ? [[b.paint, bodyMat], [b.trim, assets.trimMat], [b.gloss, assets.glossMat], [b.metal, assets.metalMat], [b.glass, assets.glassMat], [b.head, assets.headMat], [b.tail, assets.tailMat]]
+    : [[b.paint, bodyMat], [lo.trim, assets.trimMat], [lo.gloss, assets.glossMat], [b.tail, assets.tailMat]];
   for (const [g, m] of mats) {
     const mesh = new THREE.Mesh(g, m);
     mesh.castShadow = high && m !== assets.headMat && m !== assets.tailMat;
     chassis.add(mesh);
   }
-  const wheels = k.wheels.map(w => {
+  const show = lod === 'high';
+  const wheels = high ? k.wheels.map(w => {
     const pivot = new THREE.Group();
     pivot.position.copy(w.pos);
     pivot.rotation.order = 'YXZ';
-    const t = new THREE.Mesh(w.tire, assets.tireMat);
-    const r = new THREE.Mesh(w.rim, assets.rimMat);
-    t.castShadow = high;
-    pivot.add(t, r);
+    const t = new THREE.Mesh(show ? w.tire : w.low, assets.tireMat);
+    t.castShadow = true;
+    pivot.add(t);
+    if (show) pivot.add(new THREE.Mesh(w.rim, assets.rimMat));
     group.add(pivot);
     return pivot;
-  });
+  }) : [];
+  if (!high) group.add(new THREE.Mesh(lo.wheels, assets.tireMat));
+  if (high) {
+    const num = new THREE.Mesh(assets.numberGeo, assets.numberMat);
+    num.position.set(0, 1.14, -1.605);
+    num.rotation.y = Math.PI;
+    chassis.add(num);
+  }
   const shadow = new THREE.Mesh(assets.shadowGeo, new THREE.MeshBasicMaterial({ color: 0x000000, alphaMap: assets.shadowTex, transparent: true, depthWrite: false, opacity: 0.9 }));
   shadow.rotation.x = -Math.PI / 2;
   shadow.position.y = 0.02;
@@ -271,7 +297,7 @@ function buildFigure(color) {
   headParts(out, 0.25, color, 0xffffff);
   const head = merge(out.gloss, false);
   const visor = merge(out.glass, false);
-  const white = 0xf4f5f9;
+  const white = 0xd9dce4;
   const dark = 0x2a2d36;
   const body = [
     part(rbox(0.36, 0.32, 0.26, 0.11, 2), color, M(0, 0.44, 0)),
@@ -288,7 +314,7 @@ function buildFigure(color) {
   const arm = () => merge([
     part(new THREE.CapsuleGeometry(0.058, 0.14, 2, 8), color, M(0, -0.1, 0)),
     part(BOX(0.12, 0.03, 0.12), white, M(0, -0.18, 0)),
-    part(SPH(0.07, 8, 6), white, M(0, -0.22, 0.01))
+    part(SPH(0.07, 10, 8), white, M(0, -0.22, 0.01))
   ], false);
   return { head, visor, body: merge(body, false), armL: arm(), armR: arm() };
 }

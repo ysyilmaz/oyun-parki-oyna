@@ -19,7 +19,21 @@ import { THEMES } from './themes.js';
 const $ = id => document.getElementById(id);
 const COINS_BY_POS = [100, 70, 50, 35, 25, 15];
 const PAUSE_ARM_MS = 300;
+const RENDER_SCALE = [1, 1, 1, 0.85, 0.7];
+const GPU_HIGH_MS = 13.5;
+const GPU_LOW_MS = 8.5;
+const MISS_HIGH = 0.25;
+const QUALITY_WINDOW = 2;
+const SETTLE_AFTER_GO = 2.5;
 const LOCK_SVG = '<svg viewBox="0 0 40 40"><rect x="8" y="17" width="24" height="18" rx="4" fill="#ffd21f" stroke="#111" stroke-width="3"/><path d="M13 17v-5a7 7 0 0 1 14 0v5" fill="none" stroke="#111" stroke-width="4"/></svg>';
+const MEDAL_COLORS = ['', '#ffc233', '#d8dee8', '#e0864a'];
+const DIFF_KEYS = ['easy', 'normal', 'hard'];
+const DIFF_LABEL = { easy: 'KOLAY', normal: 'NORMAL', hard: 'ZOR' };
+const HOLD_MS = 1000;
+const MASH_WINDOW_MS = 700;
+const MASH_KEYS = 4;
+const COIN_COUNT_MS = 800;
+const medalSvg = (place, cls = '') => `<svg class="medal ${cls}" viewBox="0 0 40 44"><path d="M11 1h7l4 12h-7zM22 1h7l-4 12h-7z" fill="#e8102a" stroke="#111" stroke-width="2" stroke-linejoin="round"/><circle cx="20" cy="28" r="13" fill="${place ? MEDAL_COLORS[place] : 'rgba(255,255,255,0.08)'}" stroke="${place ? '#111' : 'rgba(255,255,255,0.55)'}" stroke-width="3" ${place ? '' : 'stroke-dasharray="4 3"'}/>${place ? `<text x="20" y="34" text-anchor="middle" font-size="16" font-weight="900" fill="#111">${place}</text>` : ''}</svg>`;
 const SOUND_ON = '<svg viewBox="0 0 40 40"><path d="M6 15h7l9-7v24l-9-7H6z" fill="currentColor"/><path d="M27 13a9 9 0 0 1 0 14M31 9a14 14 0 0 1 0 22" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/></svg>';
 const SOUND_OFF = '<svg viewBox="0 0 40 40"><path d="M6 15h7l9-7v24l-9-7H6z" fill="currentColor"/><path d="M27 14l10 12M37 14L27 26" stroke="#ff4a5a" stroke-width="4" stroke-linecap="round"/></svg>';
 
@@ -40,8 +54,8 @@ const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in win
 class App {
   constructor() {
     const canvas = $('gl');
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-    this.pixelRatio = Math.min(window.devicePixelRatio || 1, 1.75);
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+    this.pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
     renderer.setPixelRatio(this.pixelRatio);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1;
@@ -63,9 +77,9 @@ class App {
     this.speedLines = new SpeedLines($('fx'));
     this.mode = 'loading';
     this.last = performance.now();
-    this.frameTimes = [];
     this.qualityStep = 0;
-    this.qualityT = 0;
+    this.qualityBad = {};
+    this.gpuTimer = new GpuTimer(renderer.getContext());
     this.events = [];
     this.ft = [];
     window.addEventListener('resize', () => this.resize());
@@ -80,7 +94,11 @@ class App {
       if (document.hidden) { if (this.mode === 'race') this.pause(); sound.suspend(); } else sound.resume();
     });
     window.addEventListener('blur', () => { if (this.mode === 'race') this.pause(); });
+    this.keyTimes = [];
+    window.addEventListener('keyup', () => { if (this.hold && this.hold.key !== 'pointer') this.cancelHold(); });
     window.addEventListener('keydown', e => {
+      if (!e.repeat) { this.keyTimes.push(performance.now()); if (this.keyTimes.length > 6) this.keyTimes.shift(); }
+      if (this.hold && e.code !== this.hold.key) this.cancelHold();
       const mode = this.mode;
       if (e.code === 'Escape' || e.code === 'KeyP') {
         if (this.mode === 'race') this.pause();
@@ -97,6 +115,12 @@ class App {
     if (mode === 'paused' && this.pauseFresh()) { if (e.code !== 'Escape') e.preventDefault(); return; }
     const btns = [...$(mode === 'results' ? 'results' : 'pause').querySelectorAll('.play-btn, .menu-btn')];
     const i = btns.indexOf(document.activeElement);
+    const focused = btns[i];
+    if ((e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space') && focused && focused.classList.contains('hold-btn')) {
+      e.preventDefault();
+      this.startHold(focused, e.code);
+      return;
+    }
     if (['ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'].includes(e.code)) {
       e.preventDefault();
       const d = e.code === 'ArrowUp' || e.code === 'ArrowLeft' ? -1 : 1;
@@ -150,7 +174,7 @@ class App {
     ]);
     this.log('boot', { phase: 'compiled' });
     this.garage.update(0.016);
-    this.render(this.garage.scene, this.garage.camera, 0.95, [0.28, 0.4, 0.95]);
+    this.render(this.garage.scene, this.garage.camera, 0.82, [0.26, 0.4, 1.05]);
     await new Promise(r => requestAnimationFrame(r));
     this.readyAt = Math.round(performance.now());
     $('loading').classList.add('hidden');
@@ -214,33 +238,116 @@ class App {
     $('pauseBtn').addEventListener('click', () => this.pause());
     $('respawnBtn').addEventListener('click', () => { if (this.race && this.race.state === 'racing') this.race.player.respawn(); });
     $('resumeBtn').addEventListener('click', () => this.resume());
-    $('restartBtn').addEventListener('click', () => { if (this.pauseFresh()) return; this.endRace(); this.startRace(); });
-    $('garageBtn').addEventListener('click', () => { if (this.pauseFresh()) return; this.endRace(); this.showMenu(); });
+    this.holdActions = { restartBtn: () => { this.endRace(); this.startRace(); }, garageBtn: () => { this.endRace(); this.showMenu(); }, exitLink: () => { location.href = $('exitLink').href; } };
+    for (const id of Object.keys(this.holdActions)) {
+      const b = $(id);
+      b.addEventListener('pointerdown', e => { if (e.button === 0) { e.preventDefault(); this.startHold(b, 'pointer'); } });
+      for (const t of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(t, () => { if (this.hold && this.hold.btn === b) this.cancelHold(); });
+      b.addEventListener('click', e => e.preventDefault());
+    }
     $('againBtn').addEventListener('click', () => this.startRace());
     $('toGarageBtn').addEventListener('click', () => this.showMenu());
     sound.setMuted(save.muted);
     this.refreshMenu();
   }
 
+  mashing() {
+    const now = performance.now();
+    return this.keyTimes.filter(t => now - t < MASH_WINDOW_MS).length >= MASH_KEYS;
+  }
+
+  startHold(btn, key) {
+    if (this.mode !== 'paused' || this.pauseFresh()) return;
+    this.cancelHold();
+    if (key !== 'pointer' && this.mashing()) { btn.classList.remove('nudge'); void btn.offsetWidth; btn.classList.add('nudge'); return; }
+    const action = this.holdActions[btn.id];
+    btn.classList.remove('nudge');
+    void btn.offsetWidth;
+    btn.classList.add('holding');
+    sound.click();
+    this.log('input', { key: 'hold', value: btn.id });
+    this.hold = { btn, key, timer: setTimeout(() => { this.hold = null; btn.classList.remove('holding'); this.log('input', { key: 'holdDone', value: btn.id }); action(); }, HOLD_MS) };
+  }
+
+  cancelHold() {
+    const h = this.hold;
+    if (!h) return;
+    this.hold = null;
+    clearTimeout(h.timer);
+    h.btn.classList.remove('holding');
+    void h.btn.offsetWidth;
+    h.btn.classList.add('nudge');
+  }
+
+  medalCount() {
+    let n = 0;
+    for (const t of TRACKS) for (const d of DIFF_KEYS) if (save.medals[t.id] && save.medals[t.id][d]) n++;
+    return n;
+  }
+
+  nextGoal(coins = save.coins) {
+    const lockedTracks = TRACKS.filter(t => !this.isTrackUnlocked(t.id));
+    if (save.wins === 0 && lockedTracks.length) {
+      const t = lockedTracks.slice().sort((a, b) => a.price - b.price)[0];
+      return { kind: 'win', text: `Kazan: ${t.name} açılır`, track: t };
+    }
+    const items = lockedTracks.map(t => ({ name: t.name, price: t.price, track: t }))
+      .concat(PAINTS.filter(p => !save.colors.includes(p.id)).map(p => ({ name: p.name, price: p.price, paint: p })))
+      .sort((a, b) => a.price - b.price);
+    if (items.length) {
+      const it = items[0];
+      const ready = coins >= it.price;
+      return Object.assign({ kind: 'buy', text: ready ? `${it.name}: alabilirsin!` : `${it.name}: ${coins} / ${it.price}`, ready }, it);
+    }
+    for (const d of DIFF_KEYS) for (const t of TRACKS) if ((save.medals[t.id] || {})[d] !== 1) return { kind: 'medal', text: `Altın madalya: ${t.name} · ${DIFF_LABEL[d]}`, track: t };
+    return null;
+  }
+
+  renderGoal(el, goal, fromCoins) {
+    if (!goal) { el.classList.add('hidden'); return; }
+    el.className = 'goal-chip ' + goal.kind + (goal.ready ? ' ready' : '');
+    let icon;
+    if (goal.paint) icon = `<i class="gsw" style="background:${cssColor(goal.paint)}"></i>`;
+    else if (goal.kind === 'medal') icon = medalSvg(1);
+    else icon = '<canvas width="50" height="61"></canvas>';
+    const bar = goal.kind === 'buy' ? '<span class="gbar"><i></i></span>' : '';
+    el.innerHTML = `<span class="gi">${icon}</span><span class="gt"><b>${goal.text}</b>${bar}</span>`;
+    const c = el.querySelector('canvas');
+    if (c) drawTrackPreview(c, goal.track, true);
+    const fill = el.querySelector('.gbar i');
+    if (!fill) return;
+    const to = Math.min(1, save.coins / goal.price);
+    if (fromCoins === undefined) { fill.style.width = (to * 100) + '%'; return; }
+    fill.style.transition = 'none';
+    fill.style.width = (Math.min(1, fromCoins / goal.price) * 100) + '%';
+    void fill.offsetWidth;
+    fill.style.transition = `width ${COIN_COUNT_MS}ms ease-out 250ms`;
+    fill.style.width = (to * 100) + '%';
+  }
+
   refreshMenu() {
     $('coinCount').textContent = save.coins;
     $('coinCount2').textContent = save.coins;
+    $('medalCount').textContent = this.medalCount();
+    this.renderGoal($('goalChip'), this.nextGoal());
     document.querySelectorAll('.track-card').forEach(b => {
       const def = TRACKS.find(t => t.id === b.dataset.id);
       const unlocked = this.isTrackUnlocked(def.id);
       b.classList.toggle('sel', save.track === def.id);
       b.classList.toggle('locked', !unlocked);
-      b.querySelectorAll('.lock,.best').forEach(e => e.remove());
+      b.classList.toggle('afford', !unlocked && save.coins >= def.price && save.wins > 0);
+      b.querySelectorAll('.lock,.best,.medals').forEach(e => e.remove());
       if (!unlocked) {
         const l = document.createElement('div');
         l.className = 'lock';
         l.innerHTML = `${LOCK_SVG}<div class="price"><i class="coin"></i>${def.price}</div>`;
         b.appendChild(l);
-      } else if (save.bestRace[def.id]) {
-        const s = document.createElement('div');
-        s.className = 'best';
-        s.textContent = '🏆 ' + fmt2(save.bestRace[def.id]);
-        b.appendChild(s);
+      } else {
+        const m = document.createElement('div');
+        m.className = 'medals';
+        const got = save.medals[def.id] || {};
+        m.innerHTML = DIFF_KEYS.map(d => `<span class="md${d === save.difficulty ? ' cur' : ''}">${medalSvg(got[d] || 0)}</span>`).join('');
+        b.appendChild(m);
       }
     });
     document.querySelectorAll('.swatch').forEach(b => {
@@ -248,6 +355,7 @@ class App {
       const owned = save.colors.includes(p.id);
       b.classList.toggle('sel', save.color === p.id);
       b.classList.toggle('locked', !owned);
+      b.classList.toggle('afford', !owned && save.coins >= p.price);
       b.innerHTML = owned ? '' : `<span class="lk">${LOCK_SVG}</span><span class="sp"><i class="coin"></i>${p.price}</span>`;
     });
     document.querySelectorAll('#diffSeg button').forEach(b => { const on = b.dataset.d === save.difficulty; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
@@ -330,7 +438,9 @@ class App {
   }
 
   showMenu() {
+    cancelAnimationFrame(this.coinRaf);
     this.mode = 'menu';
+    this.setRenderScale(1);
     this.hud.show(false);
     $('touch').classList.add('hidden');
     $('pause').classList.add('hidden');
@@ -357,12 +467,13 @@ class App {
     setTimeout(async () => {
       const race = new Race(this, def, { paintId: save.color, difficulty: save.difficulty, shake: save.shake, skipCountdown: !!debug.skipcountdown, debug, events: this.events });
       race.build();
-      if (this.qualityStep >= 1) race.world.sun.shadow.mapSize.set(1024, 1024);
-      if (this.qualityStep >= 2) race.setSceneryShadows(false);
       this.race = race;
+      this.applyQuality();
       race.camera.aspect = this.aspect;
       race.camera.updateProjectionMatrix();
+      race.warm(true);
       await this.compileFor(race.scene, race.camera);
+      race.warm(false);
       this.render(race.scene, race.camera, 1, THEMES[def.theme].bloom);
       if (this.podium) { this.podium.dispose(); this.podium = null; }
       $('loading').classList.add('hidden');
@@ -372,7 +483,7 @@ class App {
       this.mode = 'race';
       sound.playMusic(THEMES[def.theme].music);
       sound.startEngine();
-      this.frameTimes = [];
+      this.qa = null;
     }, 40);
   }
 
@@ -387,6 +498,7 @@ class App {
   pause() {
     if (this.mode !== 'race') return;
     this.mode = 'paused';
+    document.querySelectorAll('.hold-btn').forEach(b => b.classList.remove('nudge', 'holding'));
     this.pausedAt = performance.now();
     this.log('pause');
     $('pause').classList.remove('hidden');
@@ -399,6 +511,7 @@ class App {
 
   resume() {
     if (this.mode !== 'paused') return;
+    this.cancelHold();
     this.mode = 'race';
     $('pause').classList.add('hidden');
     input.clearPressed();
@@ -410,8 +523,14 @@ class App {
   finishRace(results, race) {
     const me = results.find(r => r.isPlayer);
     const pos = me.pos;
-    const coins = Math.round((COINS_BY_POS[pos - 1] || 10) * (DIFFS[save.difficulty] || DIFFS.easy).coins);
+    const coins = Math.round((COINS_BY_POS[pos - 1] || 10) * (DIFFS[race.difficulty] || DIFFS.easy).coins);
     const trackId = race.def.id;
+    let medal = null;
+    if (pos <= 3) {
+      const row = save.medals[trackId] || (save.medals[trackId] = {});
+      medal = { place: pos, diff: race.difficulty, fresh: !row[race.difficulty] || pos < row[race.difficulty] };
+      if (medal.fresh) row[race.difficulty] = pos;
+    }
     save.coins += coins;
     save.races++;
     if (pos === 1) save.wins++;
@@ -426,16 +545,18 @@ class App {
     }
     persist();
     this.log('reward', { kind: 'coins', coins, position: pos });
+    if (medal && medal.fresh) this.log('reward', { kind: 'medal', place: pos, difficulty: medal.diff, track: trackId });
     if (next) this.log('unlock', { track: next.id });
     this.endRace();
-    this.showResults(results, coins, record, unlockText);
+    this.showResults(results, coins, record, unlockText, medal);
   }
 
-  showResults(results, coins, record, unlockText) {
+  showResults(results, coins, record, unlockText, medal) {
     const me = results.find(r => r.isPlayer);
     this.podium = new Podium(this.renderer, results, me.paint, this.garage.envRT.texture);
     this.podium.resize(this.width, this.height);
     this.mode = 'results';
+    this.setRenderScale(1);
     this.hud.show(false);
     $('touch').classList.add('hidden');
     $('results').classList.remove('hidden');
@@ -460,23 +581,34 @@ class App {
     $('recordStamp').classList.toggle('hidden', !record);
     $('recordTime').textContent = me.time ? fmt2(me.time) : '';
     if (record) setTimeout(() => sound.record(), 1100);
-    const rc = $('resCoins');
-    rc.textContent = '0';
+    const mb = $('resMedal');
+    mb.classList.toggle('hidden', !medal);
+    if (medal) {
+      mb.className = 'res-medal' + (medal.fresh ? ' fresh' : '');
+      mb.innerHTML = medalSvg(medal.place) + `<span class="bolts">${'<i></i>'.repeat(DIFF_KEYS.indexOf(medal.diff) + 1)}</span>`;
+    }
+    $('resCoins').textContent = coins;
     const startCoins = Math.max(0, save.coins - coins);
-    let shown = 0;
-    const step = Math.max(1, Math.round(coins / 20));
-    clearInterval(this.coinTimer);
-    setTimeout(() => {
-      this.coinTimer = setInterval(() => {
-        shown = Math.min(coins, shown + step);
-        rc.textContent = shown;
-        $('coinCount2').textContent = startCoins + shown;
-        sound.coin(Math.floor(shown / step));
-        this.punchCoins();
-        if (shown >= coins) clearInterval(this.coinTimer);
-      }, 70);
-    }, 700);
+    this.renderGoal($('resGoal'), this.nextGoal(), startCoins);
+    this.countCoins(startCoins, save.coins);
     sound.playMusic('win');
+  }
+
+  countCoins(from, to) {
+    const el = $('coinCount2');
+    cancelAnimationFrame(this.coinRaf);
+    el.textContent = from;
+    const t0 = performance.now() + 250;
+    let ticks = 0;
+    const f = now => {
+      const k = Math.max(0, Math.min(1, (now - t0) / COIN_COUNT_MS));
+      const v = Math.round(from + (to - from) * (1 - (1 - k) * (1 - k)));
+      if (String(v) !== el.textContent) el.textContent = v;
+      const tick = Math.floor(k * 8);
+      if (tick > ticks) { ticks = tick; sound.coin(tick * 2); this.punchCoins(); }
+      if (k < 1) this.coinRaf = requestAnimationFrame(f);
+    };
+    this.coinRaf = requestAnimationFrame(f);
   }
 
   debugFinish() {
@@ -491,7 +623,7 @@ class App {
       else results.push({ name: names[i - 1], isPlayer: false, paint: others[i - 1], robotColor: cols[i - 1], time: 128.4 + i * 2.7, pos: i + 1, bestLap: 43 });
     }
     this.lastDebugTrack = def.id;
-    this.showResults(results, 100, true, '');
+    this.showResults(results, 100, true, '', { place: 1, diff: save.difficulty, fresh: true });
   }
 
   render(scene, camera, exposure, bloom) {
@@ -501,35 +633,66 @@ class App {
     this.bloom.strength = bloom[0];
     this.bloom.radius = bloom[1];
     this.bloom.threshold = bloom[2];
-    this.bloom.enabled = this.qualityStep < 2 && bloom[0] > 0;
+    this.bloom.enabled = (this.mode !== 'race' || this.qualityStep < 2) && bloom[0] > 0;
+    const timed = this.mode === 'race';
+    this.renderer.shadowMap.autoUpdate = !timed && this.mode !== 'paused';
+    if (timed) this.gpuTimer.begin();
     this.composer.render();
+    if (timed) this.gpuTimer.end();
+  }
+
+  setRenderScale(k) {
+    const pr = this.pixelRatio * k;
+    if (Math.abs(this.renderer.getPixelRatio() - pr) < 1e-3) return;
+    this.renderer.setPixelRatio(pr);
+    this.resize();
+  }
+
+  applyQuality() {
+    const s = this.qualityStep;
+    this.setRenderScale(RENDER_SCALE[s]);
+    const race = this.race;
+    if (!race) return;
+    const size = s >= 1 ? 1024 : 2048;
+    const sh = race.world.sun.shadow;
+    if (sh.mapSize.x !== size) {
+      sh.mapSize.set(size, size);
+      if (sh.map) { sh.map.dispose(); sh.map = null; }
+      race.world.shadowReady = false;
+    }
+    race.setSceneryShadows(s < 1);
+  }
+
+  setQuality(step, why) {
+    const now = performance.now();
+    const prev = this.qualityStep;
+    if (step > prev && this.qualityUpAt && now - this.qualityUpAt < 8000) this.qualityBad[prev] = now + 45000;
+    if (step < prev) this.qualityUpAt = now;
+    this.qualityStep = step;
+    this.applyQuality();
+    this.log('quality', Object.assign({ step, from: prev }, why));
   }
 
   adaptQuality(dt) {
-    if (debug.hq) return;
-    if (this.race && this.race.state === 'countdown') { this.frameTimes = []; this.qualityT = 0; return; }
-    this.frameTimes.push(dt);
-    this.qualityT += dt;
-    if (this.qualityT < 3) return;
-    this.qualityT = 0;
-    const sorted = this.frameTimes.slice().sort((x, y) => x - y);
-    const median = sorted[Math.floor(sorted.length / 2)];
-    this.frameTimes = [];
-    if (median > 0.025 && this.qualityStep < 3) {
-      this.qualityStep++;
-      if (this.qualityStep === 1) {
-        this.renderer.setPixelRatio(Math.min(1, this.renderer.getPixelRatio()));
-        const sun = this.race && this.race.world.sun;
-        if (sun) { sun.shadow.mapSize.set(1024, 1024); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
-        this.resize();
-      }
-      if (this.qualityStep === 2 && this.race) this.race.setSceneryShadows(false);
-      if (this.qualityStep === 3) {
-        this.renderer.setPixelRatio(Math.min(0.75, this.renderer.getPixelRatio()));
-        this.resize();
-      }
-      this.log('quality', { step: this.qualityStep, medianMs: Math.round(median * 1000) });
-    }
+    const timer = this.gpuTimer;
+    timer.poll();
+    const race = this.race;
+    if (debug.hq || !race || race.state !== 'racing' || race.raceTime < SETTLE_AFTER_GO) { this.qa = null; timer.samples.length = 0; return; }
+    const qa = this.qa || (this.qa = { t: 0, ft: [] });
+    if (!qa.t) timer.samples.length = 0;
+    qa.ft.push(dt);
+    qa.t += dt;
+    if (qa.t < QUALITY_WINDOW) return;
+    const ft = qa.ft;
+    this.qa = null;
+    const miss = ft.filter(x => x > 0.021).length / ft.length;
+    const g = timer.samples.length >= 10 ? median(timer.samples) : null;
+    timer.samples.length = 0;
+    const why = { gpuMs: g === null ? null : +g.toFixed(1), miss: +miss.toFixed(2), frameMs: +(median(ft) * 1000).toFixed(1) };
+    this.lastQuality = why;
+    const top = RENDER_SCALE.length - 1;
+    if ((miss > MISS_HIGH || (g !== null && g > GPU_HIGH_MS)) && this.qualityStep < top) this.setQuality(this.qualityStep + 1, why);
+    else if (g !== null && g < GPU_LOW_MS && miss < 0.05 && this.qualityStep > 0 && !((this.qualityBad[this.qualityStep - 1] || 0) > performance.now())) this.setQuality(this.qualityStep - 1, why);
   }
 
   loop(now) {
@@ -541,7 +704,7 @@ class App {
     dt = Math.min(dt, 0.25);
     if (this.mode === 'menu' || this.mode === 'building') {
       this.garage.update(dt);
-      this.render(this.garage.scene, this.garage.camera, 0.95, [0.28, 0.4, 0.95]);
+      this.render(this.garage.scene, this.garage.camera, 0.82, [0.26, 0.4, 1.05]);
     } else if (this.mode === 'race' && this.race) {
       const speed = debug.speed ? Number(debug.speed) : 1;
       this.race.update(dt * speed);
@@ -557,12 +720,14 @@ class App {
       this.render(this.race.scene, this.race.camera, th.exposure, th.bloom);
     } else if (this.mode === 'results' && this.podium) {
       this.podium.update(dt);
-      this.render(this.podium.scene, this.podium.camera, 0.95, [0.28, 0.4, 1.1]);
+      this.render(this.podium.scene, this.podium.camera, 0.85, [0.26, 0.4, 1.15]);
     }
   }
 }
 
-function drawTrackPreview(c, def) {
+const previewTracks = new Map();
+
+function drawTrackPreview(c, def, mini) {
   const g = c.getContext('2d');
   const W = c.width, H = c.height;
   const bgs = {
@@ -592,11 +757,12 @@ function drawTrackPreview(c, def) {
       for (let y = H - bh + 6; y < H - 4; y += 10) if ((y + i) % 3) g.fillRect(i * 15 + 3, y, 3, 3);
     }
   }
-  const tr = new Track(def);
+  if (!previewTracks.has(def.id)) previewTracks.set(def.id, new Track(def));
+  const tr = previewTracks.get(def.id);
   const b = tr.bounds;
-  const pad = 26;
-  const sc = Math.min((W - pad * 2) / (b.maxX - b.minX), (H - pad * 2 - 20) / (b.maxZ - b.minZ));
-  const map = (x, z) => [W / 2 - (x - b.cx) * sc, H / 2 - 10 - (z - b.cz) * sc];
+  const pad = mini ? 6 : 26;
+  const sc = Math.min((W - pad * 2) / (b.maxX - b.minX), (H - pad * 2 - (mini ? 0 : 20)) / (b.maxZ - b.minZ));
+  const map = (x, z) => [W / 2 - (x - b.cx) * sc, H / 2 - (mini ? 0 : 10) - (z - b.cz) * sc];
   const path = () => {
     g.beginPath();
     for (let i = 0; i <= tr.N; i += 3) {
@@ -607,14 +773,58 @@ function drawTrackPreview(c, def) {
     g.closePath();
   };
   g.lineJoin = 'round';
-  path(); g.strokeStyle = 'rgba(0,0,0,0.6)'; g.lineWidth = 16; g.stroke();
-  path(); g.strokeStyle = def.theme === 'neon' ? '#2a2c3a' : '#4a4d55'; g.lineWidth = 11; g.stroke();
+  const lw = mini ? 0.4 : 1;
+  path(); g.strokeStyle = 'rgba(0,0,0,0.6)'; g.lineWidth = 16 * lw; g.stroke();
+  path(); g.strokeStyle = def.theme === 'neon' ? '#2a2c3a' : '#4a4d55'; g.lineWidth = 11 * lw; g.stroke();
+  if (mini) return;
   path(); g.strokeStyle = def.theme === 'neon' ? '#4af0ff' : '#ffffff'; g.lineWidth = 2; g.setLineDash([6, 6]); g.stroke(); g.setLineDash([]);
   const [sx, sy] = map(tr.px[0], tr.pz[0]);
   g.fillStyle = '#fff';
   g.strokeStyle = '#111';
   g.lineWidth = 3;
   g.beginPath(); g.arc(sx, sy, 7, 0, Math.PI * 2); g.fill(); g.stroke();
+}
+
+function median(v) {
+  const s = v.slice().sort((x, y) => x - y);
+  return s[Math.floor(s.length / 2)];
+}
+
+class GpuTimer {
+  constructor(gl) {
+    this.gl = gl;
+    this.ext = gl.getExtension('EXT_disjoint_timer_query_webgl2');
+    this.pending = [];
+    this.samples = [];
+    this.active = null;
+  }
+
+  begin() {
+    if (!this.ext || this.active || this.pending.length > 6) return;
+    this.active = this.gl.createQuery();
+    this.gl.beginQuery(this.ext.TIME_ELAPSED_EXT, this.active);
+  }
+
+  end() {
+    if (!this.active) return;
+    this.gl.endQuery(this.ext.TIME_ELAPSED_EXT);
+    this.pending.push(this.active);
+    this.active = null;
+  }
+
+  poll() {
+    if (!this.ext) return;
+    const gl = this.gl;
+    const disjoint = gl.getParameter(this.ext.GPU_DISJOINT_EXT);
+    while (this.pending.length) {
+      const q = this.pending[0];
+      if (!gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE)) break;
+      if (!disjoint) this.samples.push(gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6);
+      gl.deleteQuery(q);
+      this.pending.shift();
+    }
+    if (this.samples.length > 600) this.samples.splice(0, 300);
+  }
 }
 
 const app = new App();
@@ -656,7 +866,7 @@ Object.defineProperty(window, '__debug', {
     const ft = app.ft.slice().sort((x, y) => x - y);
     const frameMs = ft.length ? +ft[Math.floor(ft.length / 2)].toFixed(1) : 0;
     if (!app.race) return { mode: app.mode, coins: save.coins, track: save.track, color: save.color, readyAt: app.readyAt, frameMs };
-    if (app.race) return Object.assign(app.race.debugInfo(), { frameMs, quality: app.qualityStep });
+    if (app.race) return Object.assign(app.race.debugInfo(), { frameMs, quality: app.qualityStep, qualityWhy: app.lastQuality || null });
     return { mode: app.mode, coins: save.coins, track: save.track, color: save.color };
   }
 });

@@ -268,16 +268,20 @@ export function buildTrackMeshes(track, env) {
   const curbTex = T.curbTexture(th.curbA, th.curbB);
   const curbMat = new THREE.MeshStandardMaterial({ map: curbTex, roughness: 0.6 });
   const curbZones = zones(track, 0.011, 6);
+  const curbGeos = [];
   for (const z of curbZones) {
     const zr = [];
     for (let i = z.a - 4; i <= z.b + 4; i++) zr.push(track.w(i));
     for (const side of [-1, 1]) {
       const a = side * (track.halfRoad - 0.35), b = side * (track.halfRoad + 1.3);
-      const g = ribbon(track, zr, side < 0 ? b : a, side < 0 ? a : b, 0.08, 0.08, 3.2);
-      const m = new THREE.Mesh(g, curbMat);
-      m.receiveShadow = true;
-      group.add(m);
+      curbGeos.push(ribbon(track, zr, side < 0 ? b : a, side < 0 ? a : b, 0.08, 0.08, 3.2));
     }
+  }
+  if (curbGeos.length) {
+    const m = new THREE.Mesh(mergeGeometries(curbGeos), curbMat);
+    curbGeos.forEach(g => g.dispose());
+    m.receiveShadow = true;
+    group.add(m);
   }
   track.curbZones = curbZones;
 

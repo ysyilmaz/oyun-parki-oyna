@@ -28,7 +28,9 @@ html, body {
 button { font-family: inherit; font-weight: 900; cursor: pointer; border: 0; color: inherit; }
 
 #gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
-#fx { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+#fx { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; will-change: transform, opacity; transform-origin: 50% 45%; }
+#fx.on { animation: streak 0.28s linear infinite; }
+@keyframes streak { 0% { transform: scale(0.94) rotate(0deg); } 50% { transform: scale(1.1) rotate(1.5deg); } 100% { transform: scale(1.26) rotate(0deg); } }
 
 .screen { position: fixed; inset: 0; }
 .hidden { display: none !important; }
@@ -223,7 +225,6 @@ button { font-family: inherit; font-weight: 900; cursor: pointer; border: 0; col
 .wrong svg { width: 72px; height: 72px; }
 .mag-warn { position: absolute; left: 50%; bottom: 140px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; padding: 8px 16px 4px; border-radius: 22px; background: rgba(232,16,42,0.88); border: 4px solid #fff; box-shadow: 0 8px 0 rgba(0,0,0,0.35); animation: magPulse 0.6s ease-in-out infinite; }
 .mag-warn svg { width: 64px; height: 64px; }
-.mag-warn svg.arr { width: 44px; height: 26px; }
 .mag-warn.near { animation-duration: 0.22s; }
 @keyframes magPulse { 50% { transform: translateX(-50%) scale(1.18); } }
 body.touch-mode .mag-warn { bottom: 190px; }
@@ -278,6 +279,89 @@ body.touch-mode .hud-btns { right: auto; left: 150px; top: 170px; }
 .stamp { position: absolute; right: 40px; bottom: 40px; padding: 12px 22px; border: 8px solid #ff2b47; border-radius: 18px; color: #ff2b47; font-size: 50px; line-height: 0.95; text-align: center; transform: rotate(-14deg); background: rgba(255,255,255,0.92); box-shadow: 0 10px 24px rgba(0,0,0,0.35); animation: stamp 0.5s cubic-bezier(0.2, 1.8, 0.4, 1) both; animation-delay: 1.2s; }
 .stamp svg { display: block; width: 56px; height: 56px; margin: 0 auto 6px; }
 .stamp small { display: block; margin-top: 6px; font-size: 26px; color: #111; font-variant-numeric: tabular-nums; }
+
+.medal-box { display: flex; align-items: center; gap: 6px; padding: 6px 16px 6px 8px; border-radius: 999px; background: var(--panel); border: 3px solid #ffc233; font-size: 26px; box-shadow: 0 5px 0 rgba(0,0,0,0.35); }
+.medal-box svg { width: 32px; height: 36px; }
+.medal-box small { font-size: 16px; opacity: 0.7; }
+
+.track-card .medals { position: absolute; top: 6px; left: 0; right: 0; display: flex; justify-content: center; gap: 3px; pointer-events: none; }
+.track-card .md { width: 25px; height: 28px; }
+.track-card .md svg { display: block; width: 100%; height: 100%; }
+.track-card .md.cur { transform: scale(1.18); filter: drop-shadow(0 0 3px rgba(255,255,255,0.9)); }
+
+.goal-chip { display: flex; align-items: center; gap: 10px; padding: 6px 16px 6px 6px; border-radius: 18px; background: var(--panel); border: 3px solid rgba(255,255,255,0.45); align-self: flex-start; max-width: 100%; box-shadow: 0 5px 0 rgba(0,0,0,0.3); }
+.goal-chip .gi { flex: none; width: 44px; height: 50px; display: grid; place-items: center; }
+.goal-chip .gi canvas { width: 40px; height: 49px; border-radius: 8px; border: 2px solid #fff; }
+.goal-chip .gi .gsw { display: block; width: 38px; height: 38px; border-radius: 50%; border: 3px solid #fff; }
+.goal-chip .gi svg { width: 40px; height: 44px; }
+.goal-chip .gt { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.goal-chip b { font-size: 20px; white-space: nowrap; }
+.goal-chip .gbar { display: block; width: 210px; max-width: 100%; height: 12px; border-radius: 8px; background: rgba(255,255,255,0.15); overflow: hidden; }
+.goal-chip .gbar i { display: block; height: 100%; width: 0; border-radius: 8px; background: linear-gradient(90deg, #ffd21f, #ff9a00); }
+.goal-chip.win { border-color: #3bdc6a; }
+.goal-chip.ready { border-color: var(--yellow); animation: afford 1.2s ease-in-out infinite; }
+.goal-chip.ready .gbar i { background: linear-gradient(90deg, #3bff8a, #1fd46a); }
+.swatch.afford, .track-card.afford { animation: afford 1.2s ease-in-out infinite; }
+@keyframes afford { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,210,31,0), 0 4px 0 rgba(0,0,0,0.4); } 50% { box-shadow: 0 0 0 6px rgba(255,210,31,0.6), 0 4px 0 rgba(0,0,0,0.4); } }
+
+.res-card { padding: 18px 24px; }
+.res-head { display: flex; align-items: center; gap: 14px; }
+.res-head .res-title { font-size: 84px; }
+.res-head .res-sub { margin: 0; font-size: 30px; }
+.res-medal { margin-left: auto; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.res-medal svg { width: 56px; height: 62px; }
+.res-medal.fresh svg { animation: medalIn 0.7s var(--ease-back) 0.4s both; }
+.res-medal .bolts i { width: 11px; height: 14px; }
+.res-list { gap: 5px; margin-top: 10px; }
+.res-row { padding: 4px 14px; font-size: 20px; }
+.res-coins { font-size: 40px; margin: 8px 0 6px; }
+.res-coins .coin { width: 40px; height: 40px; }
+#resGoal { margin-bottom: 6px; }
+.res-btns { margin-top: 6px; }
+.res-btns .menu-btn, .res-btns .play-btn.small { height: 70px; }
+@keyframes medalIn { 0% { transform: scale(0) rotate(-40deg); } 100% { transform: scale(1) rotate(0); } }
+
+.hold-btn { position: relative; overflow: hidden; }
+.hold-btn > * { position: relative; }
+.hold-btn .hold-fill { position: absolute; inset: 0; background: rgba(255,255,255,0.42); transform: scaleX(0); transform-origin: left; pointer-events: none; }
+.hold-btn.holding .hold-fill { transform: scaleX(1); transition: transform 1s linear; }
+.hold-btn .hold-ic { display: flex; flex-direction: column; align-items: center; gap: 2px; margin-left: 6px; line-height: 1; }
+.hold-btn .hold-ic svg { width: 24px; height: 24px; }
+.hold-btn .hold-ic small { font-size: 10px; letter-spacing: 1px; opacity: 0.9; }
+.hold-btn.holding .hold-ic svg { animation: spin 1s linear; }
+.hold-btn.nudge { animation: shake 0.35s; }
+.hold-btn.nudge .hold-ic { animation: nudgeIc 0.5s ease-in-out 3; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes nudgeIc { 50% { transform: scale(1.45); color: var(--yellow); } }
+
+.gas-lock .gl-t { display: flex; flex-direction: column; gap: 5px; font-size: 15px; line-height: 1; }
+.gas-lock .gl-stop { display: flex; align-items: center; gap: 5px; font-size: 14px; opacity: 0.9; }
+.gas-lock .gl-stop .kc { min-width: 24px; height: 24px; font-size: 15px; border-radius: 7px; box-shadow: 0 3px 0 #8a8fa8; }
+.gas-lock.explain { animation: explain 0.8s ease-in-out infinite; }
+@keyframes explain { 50% { transform: scale(1.12); box-shadow: 0 0 0 6px rgba(59,255,138,0.5), 0 5px 0 rgba(0,0,0,0.35); } }
+.hint .lbl { font-size: 20px; }
+
+.mag-warn { gap: 4px; padding: 8px 18px; bottom: auto; top: 158px; }
+@keyframes magPulse { 50% { transform: translateX(-50%) scale(1.1); } }
+.mag-warn .mw-top { display: flex; align-items: center; gap: 8px; font-size: 26px; }
+.mag-warn .mw-row { display: flex; align-items: center; gap: 6px; }
+.mag-warn .mw-row > svg { width: 50px; height: 50px; }
+.mag-warn svg.warn { width: 34px; height: 30px; }
+.mag-warn svg.chev { width: 44px; height: 28px; animation: chev 0.5s linear infinite; }
+.mag-warn svg.kart { width: 58px; height: 40px; }
+.mag-warn .mw-shield { display: none; align-items: center; gap: 6px; margin-left: 8px; padding-left: 10px; border-left: 3px solid rgba(255,255,255,0.6); }
+.mag-warn.shield .mw-shield { display: flex; }
+.mag-warn .mw-shield .kc { display: inline-grid; place-items: center; height: 36px; padding: 0 10px; border-radius: 9px; background: #fff; color: #111; font-size: 16px; box-shadow: 0 4px 0 #8a8fa8; }
+.mag-warn .mw-shield svg { width: 40px; height: 40px; }
+@keyframes chev { 50% { transform: translateX(5px); } }
+
+.hud-item.rolling #itemIcon { opacity: 0.55; }
+.hud-item.queued { border-color: var(--yellow); }
+.hud-item.queued .key { opacity: 1; background: var(--yellow); }
+
+.popup.air small { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 8px; }
+.popup.air small .kc { display: inline-grid; place-items: center; height: 42px; padding: 0 14px; border-radius: 10px; background: #fff; color: #111; font-size: 20px; font-style: normal; -webkit-text-stroke: 0; text-shadow: none; box-shadow: 0 4px 0 #8a8fa8; }
+.popup.air small .ic svg { display: block; width: 46px; height: 46px; }
 
 @keyframes breathe { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.15); } }
 @keyframes punch { 0% { transform: scale(1); } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }

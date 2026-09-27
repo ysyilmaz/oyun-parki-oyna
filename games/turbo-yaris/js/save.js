@@ -8,6 +8,7 @@ const defaults = () => ({
   tracks: ['beach'],
   best: {},
   bestRace: {},
+  medals: {},
   color: 'red',
   track: 'beach',
   difficulty: 'easy',
@@ -35,6 +36,18 @@ function times(v) {
   return out;
 }
 
+function medals(v) {
+  const out = {};
+  if (!isPlain(v)) return out;
+  for (const [track, m] of Object.entries(v)) {
+    if (!isId(track) || !isPlain(m)) continue;
+    const row = {};
+    for (const d of DIFFICULTIES) if (Number.isInteger(m[d]) && m[d] >= 1 && m[d] <= 3) row[d] = m[d];
+    if (Object.keys(row).length) out[track] = row;
+  }
+  return out;
+}
+
 export function sanitize(data) {
   const s = defaults();
   if (!isPlain(data)) return s;
@@ -43,6 +56,7 @@ export function sanitize(data) {
   s.tracks = idList(data.tracks, s.tracks);
   s.best = times(data.best);
   s.bestRace = times(data.bestRace);
+  s.medals = medals(data.medals);
   if (isId(data.color)) s.color = data.color;
   if (isId(data.track)) s.track = data.track;
   if (DIFFICULTIES.includes(data.difficulty)) s.difficulty = data.difficulty;

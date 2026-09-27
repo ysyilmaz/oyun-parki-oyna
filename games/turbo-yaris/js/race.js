@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Track, buildTrackMeshes } from './track.js';
-import { buildWorld } from './world.js';
+import { buildWorld, chunkInstances } from './world.js';
 import { Kart, MAX_SPEED, SPARK_COLORS, sharedKartAssets } from './kart.js';
 import { Items } from './items.js';
 import { Particles, SkidMarks, Confetti } from './effects.js';
@@ -9,11 +9,15 @@ import { PAINTS, cssColor } from './paints.js';
 import { assets } from './assets.js';
 import { input } from './input.js';
 import { sound } from './audio.js';
-import { ICONS } from './hud.js';
+import { ICONS, fmt2 } from './hud.js';
 
 const REVERSE_ICON = '<svg viewBox="0 0 64 64"><rect x="4" y="3" width="56" height="9" rx="3" fill="#fff"/><path d="M8 3h8l-5 9H3zM28 3h8l-5 9h-8zM48 3h8l-5 9h-8z" fill="#ff3b4a"/><rect x="9" y="19" width="6" height="10" rx="2" fill="#111"/><rect x="31" y="19" width="6" height="10" rx="2" fill="#111"/><rect x="9" y="40" width="6" height="10" rx="2" fill="#111"/><rect x="31" y="40" width="6" height="10" rx="2" fill="#111"/><rect x="13" y="15" width="20" height="38" rx="8" fill="#ffd21f" stroke="#111" stroke-width="3"/><path d="M52 18v26" stroke="#3bff8a" stroke-width="7" stroke-linecap="round"/><path d="M42 40l10 16 10-16z" fill="#3bff8a" stroke="#0b3a1c" stroke-width="2" stroke-linejoin="round"/></svg>';
 const DRIFT_ICON ='<svg viewBox="0 0 64 64"><path d="M8 46c14-2 18-24 34-28" fill="none" stroke="#ffb31a" stroke-width="7" stroke-linecap="round"/><path d="M36 8l20 8-14 14z" fill="#ffb31a"/><circle cx="12" cy="54" r="5" fill="#5ab8ff"/><circle cx="24" cy="52" r="4" fill="#c63bff"/></svg>';
 
+const FLIP_ICON = '<svg viewBox="0 0 64 64"><path d="M32 8a24 24 0 1 1-22 14" fill="none" stroke="#7ae8ff" stroke-width="7" stroke-linecap="round"/><path d="M2 14l9 14 12-11z" fill="#7ae8ff"/><rect x="20" y="26" width="24" height="14" rx="5" fill="#ffd21f" stroke="#111" stroke-width="3" transform="rotate(-25 32 33)"/></svg>';
+const STOP_ICON = '<svg viewBox="0 0 64 64"><path d="M21 4h22l17 17v22L43 60H21L4 43V21z" fill="#e8102a" stroke="#fff" stroke-width="4" stroke-linejoin="round"/><rect x="16" y="28" width="32" height="8" rx="3" fill="#fff"/></svg>';
+const LOCK_ICON = '<svg viewBox="0 0 64 64"><path d="M14 52l8-40a4 4 0 0 1 4-3h14a4 4 0 0 1 4 4l-4 39z" fill="#3bff8a" stroke="#0b3a1c" stroke-width="3.5" stroke-linejoin="round"/><path d="M22 20h16M21 28h16M20 36h16" stroke="#0b3a1c" stroke-width="3" stroke-linecap="round"/><rect x="36" y="38" width="22" height="18" rx="4" fill="#ffd21f" stroke="#111" stroke-width="3"/><path d="M41 38v-5a6 6 0 0 1 12 0v5" fill="none" stroke="#111" stroke-width="3.5"/></svg>';
+const GAS_LOCK_HINT = '<span class="ic">' + LOCK_ICON + '</span><span class="lbl">GAZ KENDİ BASILI</span><span class="sep"></span><span class="kc">↓</span><span class="arrow">→</span><span class="ic">' + STOP_ICON + '</span>';
 const STEER_KEYS = '<span class="kc">←</span><span class="kc">→</span><span class="alt">veya <b>A</b><b>D</b></span>';
 const GAS_KEYS = '<span class="kc">↑</span><span class="alt">veya <b>W</b></span>';
 const IDLE_HINT_T = 1.5;
@@ -21,6 +25,9 @@ const YAW_FREE = 0.1;
 const YAW_FADE = 0.14;
 const GUIDE_T = 1.9;
 const CATCH_UP = 1.06;
+const STEER_PAY = 1.045;
+const STEER_PAY_T = 2.5;
+const CRUISE_T = 1.2;
 
 export const LAPS = 3;
 const STEP = 1 / 60;
@@ -61,6 +68,7 @@ export class Race {
     this.trackVisual = buildTrackMeshes(this.track);
     this.scene.add(this.trackVisual.group);
     this.world = buildWorld(this.track, app.renderer, this.scene, this.trackVisual);
+    chunkInstances(this.scene);
     this.theme = this.def.theme;
     this.shared = sharedKartAssets();
     this.curbSet = new Uint8Array(this.track.N);
@@ -106,8 +114,10 @@ export class Race {
     this.camY = this.player.y;
     this.fov = 60;
     const neon = this.theme === 'neon';
-    if (assets.headMat) assets.headMat.emissiveIntensity = neon ? 3 : 0.2;
+    if (assets.headMat) { assets.headMat.emissiveIntensity = neon ? 3 : 0.2; assets.headMat.color.setHex(0xfff6e0); }
     if (assets.tailMat) assets.tailMat.emissiveIntensity = neon ? 2.5 : 0.5;
+    if (assets.trimMat.userData.rim) assets.trimMat.userData.rim.value.setRGB(...(neon ? [0.3, 0.45, 0.9] : [0.22, 0.24, 0.3]));
+    if (neon) for (const k of this.karts) if (k.car.bodyMat.userData.rim) k.car.bodyMat.userData.rim.value.multiplyScalar(2.6);
     this.gantryLights = this.trackVisual.gantryLights;
     this.hud = app.hud;
     this.hud.buildMinimap(this.track, this.theme);
@@ -134,6 +144,7 @@ export class Race {
     this.syncAll(0);
     this.updateCamera(0.016, true);
     const kartObjs = new Set(this.karts.map(k => k.obj));
+    for (const o of kartObjs) o.traverse(m => { m.castShadow = false; });
     this.sceneryCasters = [];
     this.scene.traverse(o => {
       if (!o.isMesh || !o.castShadow) return;
@@ -142,8 +153,27 @@ export class Race {
     });
   }
 
+  warm(on) {
+    for (const k of this.karts) {
+      k.shield.visible = on;
+      k.flames.forEach(f => { f.visible = on; });
+    }
+    if (on) {
+      this.warmGroup = this.items.warmObjects();
+      this.warmGroup.position.set(this.player.x, this.player.y - 40, this.player.z);
+      this.scene.add(this.warmGroup);
+    } else if (this.warmGroup) {
+      this.scene.remove(this.warmGroup);
+      this.warmGroup = null;
+    }
+  }
+
   setSceneryShadows(on) {
+    if (this.sceneryShadows === on) return;
+    this.sceneryShadows = on;
     for (const o of this.sceneryCasters) o.castShadow = on;
+    this.app.renderer.shadowMap.needsUpdate = true;
+    if (this.world) this.world.shadowReady = false;
   }
 
   isCurb(i) { return this.curbSet[i] === 1; }
@@ -258,6 +288,7 @@ export class Race {
       this.log('input', { key: 'gasLatch', value: true });
       if (this.pendingSteerHint) { const h = this.pendingSteerHint; this.pendingSteerHint = null; this.hud.hint(h, 4500); }
       else this.hud.clearHint();
+      this.explainGasLock();
     }
     if (this.state === 'countdown' && gasEdge && this.countT > GO_T - 0.2) this.perfect = 'armed';
     if (this.state === 'racing' && gasEdge && this.perfect === 'window' && this.raceTime < 0.2) this.perfectStart();
@@ -291,13 +322,7 @@ export class Race {
     for (const key of ['steer', 'gas', 'brake', 'drift']) if (now[key] !== prev[key]) this.log('input', { key, value: now[key] });
     this.lastInput = now;
     c.gas = now.gas || (this.easy && this.gasLatched);
-    if (this.easy) {
-      this.handsOffT = Math.abs(raw) < 0.1 && !input.gasPressedManually ? (this.handsOffT || 0) + 1 / 60 : 0;
-      const pos = this.positionOf(p);
-      const cruise = pos <= 2 ? 0.84 : pos >= 5 ? 1 : 0.93;
-      const target = this.handsOffT > 1.2 ? cruise : pos >= 5 ? CATCH_UP : 1;
-      p.maxMul = (p.maxMul || 1) + (target - (p.maxMul || 1)) * 0.02;
-    }
+    if (this.easy) this.easyPace(raw, input.gasPressedManually);
     c.brake = now.brake;
     c.drift = now.drift;
     this.rawSteer = steer;
@@ -314,8 +339,34 @@ export class Race {
     }
     const driftPress = input.consume('drift');
     if (racing && driftPress && !p.grounded && !p.hop && p.airT > 0.03 && !p.trick) { p.trick = true; sound.jump(); }
-    if (input.consume('item') && racing && p.item && p.rouletteT <= 0) { this.log('item', { item: p.item }); this.items.use(p); }
+    if (input.consume('item') && racing) {
+      if (p.item && p.rouletteT <= 0) { this.log('item', { item: p.item }); this.items.use(p); }
+      else if (p.rouletteT > 0) p.useQueued = true;
+    }
     if (input.consume('respawn') && racing) p.respawn();
+  }
+
+  explainGasLock() {
+    const app = this.app;
+    if (app.gasLockExplained || document.body.classList.contains('touch-mode')) return;
+    app.gasLockExplained = true;
+    setTimeout(() => {
+      if (this.state !== 'racing' || !this.gasLatched || app.race !== this) return;
+      this.hud.hint(GAS_LOCK_HINT, 4500);
+      this.hud.explainGasLock(4500);
+      this.log('hint', { kind: 'gasLock' });
+    }, this.state === 'racing' ? 4800 : 8000);
+  }
+
+  easyPace(raw, gasHeld) {
+    const p = this.player;
+    this.steerAgo = Math.abs(raw) >= 0.1 ? 0 : (this.steerAgo ?? 99) + 1 / 60;
+    const pos = this.positionOf(p);
+    const base = pos >= 5 ? CATCH_UP : 1;
+    let target = base;
+    if (this.steerAgo < STEER_PAY_T) target = base * STEER_PAY;
+    else if (this.steerAgo > CRUISE_T && !gasHeld) target = pos <= 2 ? 0.84 : pos >= 5 ? 1 : 0.93;
+    p.maxMul = (p.maxMul || 1) + (target - (p.maxMul || 1)) * 0.02;
   }
 
   watchIdle(dt) {
@@ -337,7 +388,12 @@ export class Race {
       else if (this.rawSteer !== undefined) this.applyAssist(racing);
       if (k.rouletteT > 0) {
         k.rouletteT -= dt;
-        if (k.rouletteT <= 0) { k.item = k.pendingItem; k.pendingItem = null; if (k.isPlayer) sound.itemReady(); }
+        if (k.rouletteT <= 0) {
+          k.item = k.pendingItem;
+          k.pendingItem = null;
+          if (k.isPlayer) sound.itemReady();
+          if (k.useQueued && racing) { k.useQueued = false; this.log('item', { item: k.item, queued: true }); this.items.use(k); }
+        }
       }
       k.step(dt, this.time, racing);
     }
@@ -592,11 +648,12 @@ export class Race {
       hud.setTime(this.raceTime);
       hud.setLap(k.lap, LAPS);
     }
-    hud.setItem(k.item, k.rouletteT > 0, this.time);
+    hud.setItem(k.item, k.rouletteT > 0, this.time, k.useQueued);
     if (k.rouletteT > 0 && Math.floor(this.time * 14) !== this.lastRoul) { this.lastRoul = Math.floor(this.time * 14); sound.roulette(); }
-    hud.wrong(k.wrongT > 1.2 && this.state === 'racing');
-    hud.drawMinimap(this.karts, k, this.kartColors);
-    hud.drawSpeedo(k.speedRatio, Math.round(Math.abs(k.fwd) * 4.6), k.boostT > 0, k.drift.level, k.drift.active ? k.drift.charge : 0);
+    hud.wrong(k.wrongT > 0.5 && this.state === 'racing');
+    this.hudFrame = ((this.hudFrame || 0) + 1) % 4;
+    if (this.hudFrame === 1) hud.drawMinimap(this.karts, k, this.kartColors);
+    if (this.hudFrame % 2 === 0) hud.drawSpeedo(k.speedRatio, Math.round(Math.abs(k.fwd) * 4.6), k.boostT > 0, k.drift.level, k.drift.active ? k.drift.charge : 0);
     const tint = this.theme === 'neon' ? 'rgba(160,240,255,A)' : 'rgba(255,255,255,A)';
     this.app.speedLines.draw(1 / 60, k.boostT > 0 ? 1 : Math.max(0, (k.speedRatio - 0.85) * 3), tint);
   }
@@ -612,7 +669,7 @@ export class Race {
       }
     }
     const on = near < Infinity;
-    this.hud.magnet(on ? (near < 30 ? 2 : 1) : 0);
+    this.hud.magnet(on ? (near < 30 ? 2 : 1) : 0, k.item === 'shield' && k.rouletteT <= 0 && k.shieldT <= 0);
     if (!on) { this.magBeepT = 0; return; }
     const closeness = Math.max(0, Math.min(1, 1 - near / 90));
     this.magBeepT -= dt;
@@ -677,7 +734,13 @@ export class Race {
   }
 
   onLaunch(k, vy) {
-    if (k.isPlayer && vy > 3) { this.log('jump', { vy: +vy.toFixed(1) }); this.slowT = 0.45; sound.jump(); this.hud.popup('UÇUŞ! <small>SHIFT = TAKLA</small>', 'air', 900); }
+    if (k.isPlayer && vy > 3) {
+      this.log('jump', { vy: +vy.toFixed(1) });
+      this.slowT = 0.45;
+      sound.jump();
+      const keys = document.body.classList.contains('touch-mode') ? '' : '<small><span class="kc">SHIFT</span><span class="ic">' + FLIP_ICON + '</span></small>';
+      this.hud.popup('UÇUŞ!' + keys, 'air', 1100);
+    }
   }
 
   onLand(k, trick) {
@@ -752,6 +815,7 @@ export class Race {
     this.world.dispose();
     this.scene.traverse(o => {
       if ((o.isMesh || o.isPoints) && o.geometry && !o.geometry.userData.keep) o.geometry.dispose();
+      if (o.isInstancedMesh) o.dispose();
     });
     mats.forEach(m => {
       for (const k of ['map', 'emissiveMap', 'roughnessMap', 'normalMap', 'alphaMap']) if (m[k] && m[k].isTexture && m[k] !== assets.shadowTex) m[k].dispose();
@@ -782,9 +846,6 @@ export class Race {
   }
 }
 
-function fmtLap(t) {
-  const m = Math.floor(t / 60), s = t - m * 60;
-  return `${m}:${s < 10 ? '0' : ''}${s.toFixed(2)}`;
-}
+const fmtLap = fmt2;
 
 export { MAX_SPEED };
