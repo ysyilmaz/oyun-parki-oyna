@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Turbo Yarış</title>
+<link rel="stylesheet" href="style.css">
+<script type="importmap">{"imports":{"three":"../../vendor/three/build/three.module.js","three/addons/":"../../vendor/three/jsm/"}}</script>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="fx"></canvas>
+
+<div id="loading" class="screen">
+  <div class="logo big"><span class="l1">TURBO</span><span class="l2">YARIŞ</span></div>
+  <div class="bar"><div id="loadFill"></div></div>
+  <div class="load-txt">Arabalar hazırlanıyor…</div>
+</div>
+
+<div id="menu" class="screen hidden">
+  <div class="menu-top">
+    <a class="chip-btn back" href="../../index.html">← Oyunlar</a>
+    <div class="menu-top-right">
+      <div class="coins" id="coinBox"><i class="coin"></i><span id="coinCount">0</span></div>
+      <button id="muteBtn" class="round-btn" aria-label="Ses"></button>
+    </div>
+  </div>
+  <div class="menu-left">
+    <div class="logo"><span class="l1">TURBO</span><span class="l2">YARIŞ</span></div>
+    <div class="sec">PİST</div>
+    <div id="trackCards" class="track-cards"></div>
+    <div id="diffSeg" class="diff-seg" role="radiogroup">
+      <button data-d="easy" role="radio"><span class="bolts"><i></i></span><span>KOLAY</span></button>
+      <button data-d="normal" role="radio"><span class="bolts"><i></i><i></i></span><span>NORMAL</span></button>
+      <button data-d="hard" role="radio"><span class="bolts"><i></i><i></i><i></i></span><span>ZOR</span></button>
+    </div>
+    <button id="playBtn" class="play-btn"><span>YARIŞ!</span><svg viewBox="0 0 40 40"><path d="M12 6l22 14-22 14z" fill="currentColor"/></svg></button>
+  </div>
+  <div class="menu-bottom">
+    <div class="sec">RENK</div>
+    <div id="swatches" class="swatches"></div>
+  </div>
+  <div class="keys-hint"><b>↑</b> gaz · <b>←</b><b>→</b> dön · <b>SHIFT</b> drift · <b>SPACE</b> eşya</div>
+  <div id="toast" class="toast"></div>
+</div>
+
+<div id="hud" class="hidden">
+  <div class="hud-pos" data-p="1"><span id="posNum">1</span><span class="dot">.</span><span id="posTotal">/6</span></div>
+  <div class="hud-lap"><div class="lbl">TUR</div><div class="val"><span id="lapNum">1</span><span class="sl">/</span><span id="lapTotal">3</span></div><div id="lapTime" class="time">0:00.0</div></div>
+  <div class="hud-item" id="itemSlot"><div id="itemIcon"></div><div class="key">SPACE</div></div>
+  <canvas id="minimap" width="220" height="220"></canvas>
+  <canvas id="speedo" width="220" height="220"></canvas>
+  <div id="gasLock" class="gas-lock hidden" aria-hidden="true"><svg viewBox="0 0 64 64"><path d="M14 52l8-40a4 4 0 0 1 4-3h14a4 4 0 0 1 4 4l-4 39z" fill="#3bff8a" stroke="#0b3a1c" stroke-width="3.5" stroke-linejoin="round"/><path d="M22 20h16M21 28h16M20 36h16" stroke="#0b3a1c" stroke-width="3" stroke-linecap="round"/><rect x="36" y="38" width="22" height="18" rx="4" fill="#ffd21f" stroke="#111" stroke-width="3"/><path d="M41 38v-5a6 6 0 0 1 12 0v5" fill="none" stroke="#111" stroke-width="3.5"/></svg><span class="kc">↓</span></div>
+  <div id="center" class="center-msg"></div>
+  <div id="popup" class="popup"></div>
+  <div id="hint" class="hint"></div>
+  <div id="wrongWay" class="wrong hidden"><svg viewBox="0 0 64 64"><path d="M20 54V26a14 14 0 0 1 28 0v6" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round"/><path d="M34 30l14 16 14-16z" fill="#fff"/></svg><span>TERS YÖN!</span></div>
+  <div id="magnetWarn" class="mag-warn hidden" aria-hidden="true"></div>
+  <div class="hud-btns">
+    <button id="respawnBtn" class="round-btn" aria-label="Yola dön"><svg viewBox="0 0 40 40"><path d="M20 7a13 13 0 1 1-12 8" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><path d="M3 9l6 8 7-7z" fill="currentColor"/></svg></button>
+    <button id="pauseBtn" class="round-btn" aria-label="Durdur"><svg viewBox="0 0 40 40"><rect x="10" y="8" width="7" height="24" rx="2" fill="currentColor"/><rect x="23" y="8" width="7" height="24" rx="2" fill="currentColor"/></svg></button>
+  </div>
+  <div id="touch" class="touch hidden">
+    <div class="t-left">
+      <button class="t-btn" data-touch="left" aria-label="Sol"><svg viewBox="0 0 40 40"><path d="M26 6L10 20l16 14z" fill="currentColor"/></svg></button>
+      <button class="t-btn" data-touch="right" aria-label="Sağ"><svg viewBox="0 0 40 40"><path d="M14 6l16 14-16 14z" fill="currentColor"/></svg></button>
+    </div>
+    <div class="t-right">
+      <button class="t-btn t-item" data-touch="item" aria-label="Eşya"><svg viewBox="0 0 40 40"><rect x="7" y="7" width="26" height="26" rx="6" fill="none" stroke="currentColor" stroke-width="4"/><text x="20" y="28" text-anchor="middle" font-size="20" font-weight="900" fill="currentColor">?</text></svg></button>
+      <button class="t-btn t-drift" data-touch="drift" aria-label="Drift"><svg viewBox="0 0 40 40"><path d="M6 28c8-2 10-14 20-16" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><path d="M22 6l10 5-7 8z" fill="currentColor"/><circle cx="9" cy="33" r="3" fill="currentColor"/><circle cx="17" cy="31" r="2" fill="currentColor"/></svg><span>DRİFT</span></button>
+      <button class="t-btn t-brake" data-touch="brake" aria-label="Fren"><svg viewBox="0 0 40 40"><rect x="8" y="10" width="24" height="20" rx="5" fill="currentColor"/></svg></button>
+      <button class="t-btn t-gas" data-touch="gastoggle" aria-label="Gaz"><svg viewBox="0 0 40 40"><path d="M20 4l6 12h-4v8h-4v-8h-4z M8 30h24v6H8z" fill="currentColor"/></svg><span>GAZ</span></button>
+    </div>
+  </div>
+</div>
+
+<div id="pause" class="screen overlay hidden">
+  <div class="panel">
+    <div class="panel-title">MOLA</div>
+    <button id="resumeBtn" class="play-btn small"><svg viewBox="0 0 40 40"><path d="M12 6l22 14-22 14z" fill="currentColor"/></svg><span>DEVAM</span></button>
+    <button id="restartBtn" class="menu-btn"><svg viewBox="0 0 40 40"><path d="M9 4v33" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><rect x="11" y="5" width="22" height="16.5" fill="none" stroke="currentColor" stroke-width="2"/><g fill="currentColor"><rect x="11" y="5" width="5.5" height="5.5"/><rect x="22" y="5" width="5.5" height="5.5"/><rect x="16.5" y="10.5" width="5.5" height="5.5"/><rect x="27.5" y="10.5" width="5.5" height="5.5"/><rect x="11" y="16" width="5.5" height="5.5"/><rect x="22" y="16" width="5.5" height="5.5"/></g></svg><span>BAŞTAN</span></button>
+    <button id="garageBtn" class="menu-btn"><svg viewBox="0 0 40 40"><path d="M5 18L20 6l15 12v16H5z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M11 30l2.5-6h13l2.5 6v4H11z" fill="currentColor"/></svg><span>GARAJ</span></button>
+    <button id="shakeBtn" class="menu-btn alt"><svg viewBox="0 0 40 40"><rect x="13" y="7" width="14" height="26" rx="3" fill="none" stroke="currentColor" stroke-width="4"/><path d="M6 13v14M34 13v14" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg><span>SARSINTI: AÇIK</span></button>
+    <a class="menu-btn link" href="../../index.html">← Oyunlar</a>
+    <div class="keys-card"><span><b>↑</b> gaz</span><span><b>←</b><b>→</b> dön</span><span><b>SHIFT</b> drift</span><span><b>SPACE</b> eşya</span><span><b>R</b> yola dön</span></div>
+  </div>
+</div>
+
+<div id="results" class="screen hidden">
+  <div class="res-card">
+    <div id="resTitle" class="res-title">1.</div>
+    <div id="resSub" class="res-sub">HARİKA!</div>
+    <div id="resList" class="res-list"></div>
+    <div class="res-coins"><i class="coin"></i>+<span id="resCoins">0</span></div>
+    <div id="unlockMsg" class="unlock hidden"></div>
+    <div class="res-btns">
+      <button id="againBtn" class="play-btn small"><svg viewBox="0 0 40 40"><path d="M9 4v33" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><rect x="11" y="5" width="22" height="16.5" fill="none" stroke="currentColor" stroke-width="2"/><g fill="currentColor"><rect x="11" y="5" width="5.5" height="5.5"/><rect x="22" y="5" width="5.5" height="5.5"/><rect x="16.5" y="10.5" width="5.5" height="5.5"/><rect x="27.5" y="10.5" width="5.5" height="5.5"/><rect x="11" y="16" width="5.5" height="5.5"/><rect x="22" y="16" width="5.5" height="5.5"/></g></svg><span>TEKRAR</span></button>
+      <button id="toGarageBtn" class="menu-btn"><svg viewBox="0 0 40 40"><path d="M5 18L20 6l15 12v16H5z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M11 30l2.5-6h13l2.5 6v4H11z" fill="currentColor"/></svg><span>GARAJ</span></button>
+    </div>
+  </div>
+  <div id="recordStamp" class="stamp hidden"><svg viewBox="0 0 64 64"><rect x="27" y="3" width="10" height="7" rx="2" fill="#ff2b47"/><path d="M47 12l5 5" stroke="#ff2b47" stroke-width="5" stroke-linecap="round"/><circle cx="32" cy="37" r="23" fill="#fff" stroke="#ff2b47" stroke-width="6"/><path d="M32 37V22" stroke="#ff2b47" stroke-width="5" stroke-linecap="round"/><path d="M32 37l9 7" stroke="#111" stroke-width="4" stroke-linecap="round"/></svg><span>YENİ<br>REKOR!</span><small id="recordTime"></small></div>
+  <div class="menu-top"><div class="coins"><i class="coin"></i><span id="coinCount2">0</span></div></div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
