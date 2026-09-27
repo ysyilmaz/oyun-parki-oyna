@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Pet Adası</title>
+<meta name="theme-color" content="#2f7fff">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">{"imports":{"three":"../../vendor/three/build/three.module.js","three/addons/":"../../vendor/three/jsm/"}}</script>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="overlay"></div>
+<div id="hud" class="hidden">
+  <div class="currency">
+    <div class="cur-pill" id="coinPill"><span class="cur-ic ic-coin"></span><span id="coinText">0</span></div>
+    <div class="cur-pill gem" id="gemPill"><span class="cur-ic ic-gem"></span><span id="gemText">0</span></div>
+  </div>
+  <div id="goal" class="goal">
+    <div class="goal-ic" id="goalIc"></div>
+    <div class="goal-body">
+      <div class="goal-text" id="goalText"></div>
+      <div class="goal-bar"><div class="goal-fill" id="goalFill"></div><div class="goal-num" id="goalNum"></div></div>
+    </div>
+  </div>
+  <div class="side">
+    <button class="side-btn" id="btnPets" data-sfx><span class="sb-ic" data-icon="paw"></span><span class="sb-label">Petler</span><span class="sb-badge hidden" id="petBadge"></span></button>
+    <div id="shopHint" class="shop-hint hidden"><svg viewBox="0 0 80 60"><path d="M76 16H40V4L4 30l36 26V44h36z" fill="#ffd23a" stroke="#1d1b3a" stroke-width="6" stroke-linejoin="round"/></svg></div>
+    <button class="side-btn sb-shop" id="btnShop" data-sfx><span class="sb-ic" data-icon="cart"></span><span class="sb-label">Mağaza</span></button>
+    <button class="side-btn sb-book" id="btnIndex" data-sfx><span class="sb-ic" data-icon="book"></span><span class="sb-label">Kitap</span></button>
+    <button class="side-btn sb-gear" id="btnSettings" data-sfx><span class="sb-ic" data-icon="gear"></span><span class="sb-label">Ayarlar</span></button>
+  </div>
+  <div class="power-pill" id="powerPill"><span class="cur-ic" data-icon="bolt"></span><span id="powerText">0</span></div>
+  <div id="prompt" class="prompt hidden"></div>
+  <div id="zoneBanner" class="zone-banner"></div>
+  <div id="toasts" class="toasts"></div>
+  <button id="jumpBtn" class="jump-btn hidden" aria-label="Zıpla"><span data-icon="up"></span></button>
+  <div class="topright">
+    <button class="round-btn" id="btnMute" aria-label="Ses"><span data-icon="sound"></span></button>
+    <button class="round-btn" id="btnPause" aria-label="Durdur"><span data-icon="pause"></span></button>
+  </div>
+  <div class="keys-hint" id="keysHint">
+    <div class="kh-row kh-move"><div class="kgrid"><span class="key k-w">↑</span><span class="key k-a">←</span><span class="key k-s">↓</span><span class="key k-d">→</span></div><span class="kh-ic" data-icon="boot"></span></div>
+    <div class="kh-row kh-move kh-alt"><span class="alt-or">veya</span><span class="key mini">W</span><span class="key mini">A</span><span class="key mini">S</span><span class="key mini">D</span></div>
+    <div class="kh-row kh-move"><span class="key wide">Boşluk</span><span class="kh-ic" data-icon="up"></span></div>
+    <div class="kh-row kh-e hidden" id="khE"><span class="key key-e">E</span><span class="kh-ic" data-icon="egg"></span></div>
+  </div>
+</div>
+<div id="pause" class="pause hidden">
+  <div class="pause-card">
+    <button class="play-circle" id="resumeBtn" aria-label="Devam"><span data-icon="play"></span></button>
+    <div class="ctl-grid">
+      <div class="ctl"><div class="kgrid"><span class="key k-w">W</span><span class="key k-a">A</span><span class="key k-s">S</span><span class="key k-d">D</span></div><span class="ctl-eq">=</span><span class="kh-ic" data-icon="boot"></span></div>
+      <div class="ctl"><div class="kgrid"><span class="key k-w">↑</span><span class="key k-a">←</span><span class="key k-s">↓</span><span class="key k-d">→</span></div><span class="ctl-eq">=</span><span class="kh-ic" data-icon="boot"></span></div>
+      <div class="ctl"><span class="key wide">␣</span><span class="ctl-eq">=</span><span class="kh-ic" data-icon="up"></span></div>
+      <div class="ctl"><span class="key">E</span><span class="ctl-eq">=</span><span class="kh-ic" data-icon="egg"></span></div>
+      <div class="ctl"><span class="kh-ic" data-icon="mouse"></span><span class="ctl-eq">=</span><span class="kh-ic" data-icon="paw"></span></div>
+      <div class="ctl"><span class="kh-ic" data-icon="mouse"></span><span class="kh-ic" data-icon="rotate"></span></div>
+    </div>
+    <a class="big-btn blue small" href="../../index.html">← Oyunlar</a>
+  </div>
+</div>
+<div id="joy" class="joy"><div class="joy-knob"></div></div>
+<div id="flyLayer" class="fly-layer"></div>
+<div id="tapHand" class="tap-hand hidden"><div class="tap-ring"></div><svg viewBox="0 0 64 64"><path d="M26 8a5 5 0 0 1 10 0v20l3-1a5 5 0 0 1 6 3l1-1a5 5 0 0 1 7 4v14c0 8-6 14-14 14h-6c-6 0-10-3-13-8L12 38a5 5 0 0 1 8-5l6 5z" fill="#fff" stroke="#1d1b3a" stroke-width="4" stroke-linejoin="round"/></svg></div>
+<div id="goalPointer" class="goal-pointer hidden"><svg viewBox="0 0 80 80"><path d="M14 30h30V14l30 26-30 26V50H14z" fill="#ffd23a" stroke="#1d1b3a" stroke-width="6" stroke-linejoin="round"/></svg></div>
+<div id="modal" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head">
+      <div class="modal-title" id="modalTitle"></div>
+      <button class="close-btn" id="modalClose" aria-label="Kapat"><span data-icon="x"></span></button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+<div id="undoBar" class="undo-bar hidden"><button class="big-btn blue small" id="undoBtn"><span data-icon="rotate" class="cur-ic"></span>Geri Al</button><div class="undo-track"><div class="undo-fill"></div></div></div>
+<div id="hatchUI" class="hatch-ui hidden">
+  <div class="hatch-flash" id="hatchFlash"></div>
+  <div class="hatch-banner" id="hatchBanner">
+    <div class="hb-new" id="hbNew">YENİ!</div>
+    <div class="hb-rarity" id="hbRarity"></div>
+    <div class="hb-name" id="hbName"></div>
+    <div class="hb-power"><span class="cur-ic" data-icon="bolt"></span><span id="hbPower"></span></div>
+    <button class="big-btn green" id="hbOk">Tamam</button>
+  </div>
+  <div class="hatch-tip" id="hatchTip"></div>
+</div>
+<div id="start" class="start">
+  <div class="start-bg"></div>
+  <a class="back-link" href="../../index.html">← Oyunlar</a>
+  <div class="logo">
+    <div class="logo-top">PET</div>
+    <div class="logo-bottom">ADASI</div>
+    <div class="logo-sub">Yumurta aç · Pet topla · Adayı keşfet</div>
+  </div>
+  <div class="load-wrap" id="loadWrap"><div class="load-bar"><div class="load-fill" id="loadFill"></div></div><div class="load-text">Yükleniyor…</div></div>
+  <button id="playBtn" class="play-btn">OYNA</button>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
