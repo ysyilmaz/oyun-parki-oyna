@@ -3,8 +3,10 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { CREATORS, CREATOR_BY_ID, RARITIES, THEMES, DESKS_PER_FLOOR, VIRAL_MULT, VIRAL_TIME, VIRAL_MIN, VIRAL_MAX, OFFLINE_CAP, OFFLINE_RATE, START_MONEY, REBIRTH_START_MONEY, RESTOCK_TIME, makeStock, UNDO_TIME, SELL_HOLD, MAX_REBIRTHS, floorsFor, multiplier, rebirthCost, totalMult, sellPrice, newTierAt, tierUnlocked, fmt, pagesComplete } from './data.js';
+import { CREATORS, CREATOR_BY_ID, RARITIES, THEMES, DESKS_PER_FLOOR, VIRAL_MULT, VIRAL_TIME, VIRAL_MIN, VIRAL_MAX, OFFLINE_CAP, OFFLINE_RATE, START_MONEY, REBIRTH_START_MONEY, RESTOCK_TIME, makeStock, UNDO_TIME, SELL_HOLD, MAX_REBIRTHS, floorsFor, multiplier, rebirthCost, totalMult, sellPrice, newTierAt, tierUnlocked, fmt, fmtMult, pagesComplete } from './data.js';
 import { H, ROOM, ELEV, SHOP, SPAWN, WORLD, STATIONS, ST_BOX, PAD_OFF, FRONT_DOOR, stationLocal, insideRoom, insideCabin, inTower, wallBoxes, OUTDOOR_BOXES } from './layout.js';
 import { makeSky, makeGround, Shop, TowerExtras, Elevator } from './world.js';
 import { Floor } from './floors.js';
@@ -89,6 +91,7 @@ sc.near = 1;
 sc.far = 120;
 sun.shadow.bias = -0.0005;
 sun.shadow.normalBias = 0.05;
+sun.shadow.radius = 3;
 scene.add(sun, sun.target);
 const fill = new THREE.DirectionalLight('#7fa8ff', 0.8);
 fill.position.set(-30, 20, -20);
@@ -114,6 +117,8 @@ composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.42, 0.42, 1.6);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
+const fxaa = new ShaderPass(FXAAShader);
+composer.addPass(fxaa);
 
 let quality = dbgVal('quality') === 'low' ? 'low' : 'high';
 function applyQuality() {
@@ -121,6 +126,7 @@ function applyQuality() {
   renderer.setPixelRatio(pr);
   composer.setPixelRatio(pr);
   bloom.enabled = quality === 'high';
+  fxaa.enabled = quality !== 'high';
   const samples = quality === 'high' ? 4 : 0;
   for (const t of [composer.renderTarget1, composer.renderTarget2]) {
     if (t.samples !== samples) {
@@ -146,6 +152,7 @@ function resize() {
   camera.updateProjectionMatrix();
   renderer.setSize(w, h, false);
   composer.setSize(w, h);
+  fxaa.material.uniforms.resolution.value.set(1 / (w * renderer.getPixelRatio()), 1 / (h * renderer.getPixelRatio()));
   particles.setScale(h * renderer.getPixelRatio(), camera.fov);
   overlay.resize();
 }
@@ -197,6 +204,10 @@ let holdValid = false;
 let lastInputT = 0;
 let cine = null;
 let perSecond = 0;
+let pendingIncome = 0;
+let viralOn = false;
+let studioGuideUntil = -1;
+const STUDIO_GUIDE_TIME = 8;
 const frameTimes = [];
 let qualityChecked = false;
 let playT = 0;
@@ -453,6 +464,7 @@ function buyDef(def, via) {
     }
   }
   lastBuyAt = now;
+  studioGuideUntil = time + STUDIO_GUIDE_TIME;
   if (swap >= 0) {
     const weak = CREATOR_BY_ID[state.desks[swap].id];
     const wq = state.waiting;
@@ -483,7 +495,7 @@ function buyDef(def, via) {
   state.desks[idx] = { id: def.id, subs: Math.round(100 + Math.random() * 400) };
   deskRT[idx].arriving = true;
   startWalker(def, pos, dest);
-  ui.reveal(def, thumb(def), def.inc * mult(), state.rebirths > 0 ? '×' + String(multiplier(state.rebirths)).replace('.', ',') : '');
+  ui.reveal(def, thumb(def), def.inc * mult(), state.rebirths > 0 ? '×' + fmtMult(totalMult(state.rebirths, state.owned)) : '');
   if (firstTime) ui.el.bookBadge.classList.remove('hidden'), (ui.el.bookBadge.textContent = '!');
   log('buy', { id: def.id, rarity: def.r, price: def.price, via, desk: idx, swap, cat: 'reward' });
   updateShowcase();
@@ -619,12 +631,14 @@ function moneyFloor(dt) {
 function tickIncome(dt) {
   const m = mult();
   let ps = 0;
+  let vir = false;
   for (let i = 0; i < state.desks.length; i++) {
     const d = state.desks[i];
     const rt = deskRT[i];
     if (!d || rt.arriving) continue;
     const def = CREATOR_BY_ID[d.id];
     const viral = rt.viral > 0;
+    if (viral) vir = true;
     ps += def.inc * m * (viral ? VIRAL_MULT : 1);
     d.subs += def.inc * (viral ? 9 : 1.5) * dt * (0.8 + Math.random() * 0.4);
     if (viral) {
@@ -637,6 +651,11 @@ function tickIncome(dt) {
     }
   }
   perSecond = ps;
+  viralOn = vir;
+  let pend = 0;
+  for (let i = 0; i < state.desks.length; i++) if (state.desks[i] && deskRT[i].arriving) pend += CREATOR_BY_ID[state.desks[i].id].inc * m;
+  if (pend < pendingIncome - 1e-9) ui.ratePulse();
+  pendingIncome = pend;
   state.money += ps * dt;
   state.stats.earned += ps * dt;
   incomeLogAcc += ps * dt;
@@ -1157,7 +1176,7 @@ function updateCine(dt) {
   if (c.t > 0.8 && c.t < 2.4 && Math.random() < 0.6) particles.burst((Math.random() - 0.5) * 34, (n - 1) * H + 0.2, 10 + Math.random(), { count: 3, colors: ['#ffffff', '#e8dcc8'], speed: 2, life: 1.2, grav: -1, size: 1.2, shape: 0 });
   if (c.t > 2.3 && !c.mult) {
     c.mult = true;
-    ui.bigMult(`×${String(multiplier(state.rebirths)).replace('.', ',')}<small>${n}. kat</small>`);
+    ui.bigMult(`×${fmtMult(totalMult(state.rebirths, state.owned))}<small>${n}. kat</small>`);
     particles.confetti(0, topY + 4, 12, 140);
     audio.buy(3);
   }
@@ -1230,7 +1249,11 @@ function guideTarget() {
   const t = state.tut;
   const idle = time - lastInputT > 10;
   const nf = state.newFloor;
-  if (nf > 0 && nf < floorCount() && curFloor !== nf) return { pos: new THREE.Vector3(0, nf * H, 3.5), floor: nf, kind: 'floor' };
+  const nfKind = goalStep().kind;
+  if (nf > 0 && nf < floorCount() && curFloor !== nf && nfKind !== 'buy' && nfKind !== 'rebirth') return { pos: new THREE.Vector3(0, nf * H, 3.5), floor: nf, kind: 'floor' };
+  if (ui.modalKind === 'shop' && studioGuideUntil > time) studioGuideUntil = time + STUDIO_GUIDE_TIME;
+  if (studioGuideUntil > time && !isInside()) return { pos: new THREE.Vector3(0, 0, ROOM.z1 + 2.5), floor: 0, kind: 'studio' };
+  if (isInside()) studioGuideUntil = -1;
   const gs = goalStep();
   if (state.waiting.length && weakestDesk() >= 0) {
     const w = weakestDesk();
@@ -1303,7 +1326,10 @@ function routeTo(target) {
     return pts;
   }
   const tIn = target.floor > 0 || inTower(target.pos.x, target.pos.z);
-  if (curFloor === 0 && pIn && !tIn) pts.push(doorIn.clone(), doorOut.clone());
+  if (curFloor === 0 && pIn && !tIn) {
+    if (player.pos.z < doorIn.z || Math.abs(player.pos.x) > FRONT_DOOR.x1) pts.push(doorIn.clone());
+    pts.push(doorOut.clone());
+  }
   if (curFloor === 0 && !pIn && tIn) pts.push(doorOut.clone(), doorIn.clone());
   pts.push(target.pos.clone());
   return pts;
@@ -1322,7 +1348,7 @@ function updateGuide(dt) {
   let hudArrow = null;
   if (g && g.hud === 'rebirth') {
     const r = ui.el.rebirth.getBoundingClientRect();
-    hudArrow = [r.left - 50, r.top + r.height / 2, 90];
+    hudArrow = [r.left - 50, r.top + r.height / 2, 90, '×' + fmtMult(totalMult(state.rebirths + 1, state.owned))];
   } else if (g) {
     const pts = routeTo(g);
     chevPhase = (chevPhase + dt * 2.2) % 1.6;
@@ -1355,7 +1381,7 @@ function updateGuide(dt) {
   for (let i = used; i < 40; i++) chevrons.setMatrixAt(i, hide);
   chevrons.instanceMatrix.needsUpdate = true;
   chevMat.opacity = 0.55 + Math.sin(time * 6) * 0.25;
-  if (hudArrow && !G.modal) ui.arrowAt(hudArrow[0], hudArrow[1], hudArrow[2]);
+  if (hudArrow && !G.modal) ui.arrowAt(hudArrow[0], hudArrow[1], hudArrow[2], hudArrow[3]);
   else ui.arrowAt(null);
 }
 
@@ -1447,16 +1473,21 @@ function updateVisibility() {
   if (!cine) extras.roof.visible = !inside;
   extras.canopy.visible = !inside;
   elevator.cabin.visible = true;
+  elevator.cabinRoof.visible = !elev && !nearCabin();
 }
 
 let camYawGoal = rig.baseYaw;
+function nearCabin() {
+  return insideCabin(player.pos.x, player.pos.z, -1.6) && player.pos.x < ROOM.x0 - 0.3;
+}
+
 function updateCamera(dt, drag) {
   const inside = isInside();
-  const inCab = insideCabin(player.pos.x, player.pos.z, -0.4) || !!elev;
-  rig.goalPitch = inCab ? 0.5 : inside ? 0.58 : 0.62;
-  rig.goalDist = inCab ? 17 : inside ? 14.5 : 18;
-  rig.goalYaw = inCab ? -0.5 : rig.baseYaw;
-  rig.boxes = camBoxes();
+  const inCab = nearCabin() || !!elev;
+  rig.goalPitch = inCab ? 0.42 : inside ? 0.58 : 0.62;
+  rig.goalDist = inCab ? 13 : inside ? 14.5 : 18;
+  rig.goalYaw = inCab ? -1.2 : rig.baseYaw;
+  rig.boxes = inCab ? [] : camBoxes();
   rig.minY = (elev ? elevator.y : curFloor * H) + 2;
   rig.update(dt, drag, player.pos);
   updateOcclusion(dt);
@@ -1528,12 +1559,13 @@ function updateSun() {
 function updateHUD(dt) {
   const diff = state.money - displayMoney;
   displayMoney = Math.abs(diff) < 1 ? state.money : displayMoney + diff * Math.min(1, dt * 7);
-  ui.money(displayMoney, perSecond, mult());
+  ui.money(displayMoney, perSecond, mult(), pendingIncome, viralOn);
   const R = state.rebirths;
   const cost = rebirthCost(R);
   const maxed = R >= MAX_REBIRTHS;
   const g = goalStep();
   lastGoal = g.kind;
+  const rbMult = maxed ? '★' : '×' + fmtMult(totalMult(R + 1, state.owned));
   const rbSub = !maxed && g.kind !== 'rebirth' && state.tut.buys > 0 ? `<span class="gs-ic">${ICONS.rebirth}</span>${fmt(state.money)} / ${fmt(cost)}` : '';
   const rs = Math.max(1, Math.ceil(restockLeft));
   const clock = `${Math.floor(rs / 60)}:${String(rs % 60).padStart(2, '0')}`;
@@ -1541,8 +1573,8 @@ function updateHUD(dt) {
   const nf = state.newFloor;
   const full = firstFreeDesk() < 0;
   const fullIc = full ? `<span class="gs-ic">${ICONS.full}</span>` : '';
-  if (nf > 0 && nf < floorCount() && curFloor !== nf && g.kind !== 'rebirth') ui.goal('elevator', 1, `${nf + 1}`, false, true, '', true);
-  else if (g.kind === 'rebirth') ui.goal('rebirth', 1, `${fmt(state.money)} / ${fmt(cost)}`, true, false, fullIc, false);
+  if (nf > 0 && nf < floorCount() && curFloor !== nf && g.kind !== 'rebirth' && g.kind !== 'buy') ui.goal('elevator', 1, `${nf + 1}`, false, true, '', true);
+  else if (g.kind === 'rebirth') ui.goal('rebirth', 1, rbMult, true, false, fullIc, false);
   else if (full && !maxed && g.kind === 'wait') ui.goal('rebirth', Math.min(1, state.money / cost), `${fmt(state.money)} / ${fmt(cost)}`, false, false, fullIc, false);
   else if (g.kind === 'buy') ui.goal('cart', 1, `${g.def.name} +${fmt(g.def.inc * mult())}/sn`, false, true, g.swap ? `${fullIc}<span class="gs-ic">${ICONS.sell}</span>` : rbSub, outside, thumb(g.def));
   else if (g.kind === 'save') ui.goal('cart', Math.min(1, state.money / g.def.price), `${fmt(state.money)} / ${fmt(g.def.price)}`, false, true, `${rbSub}${rbSub ? ' · ' : ''}<span class="gs-ic">${ICONS.moon}</span>Yeni stok ${clock}`, false, thumb(g.def));
@@ -1551,7 +1583,7 @@ function updateHUD(dt) {
     const have = CREATORS.filter((c) => state.owned[c.id]).length;
     ui.goal('book', have / CREATORS.length, `${have} / ${CREATORS.length}`, false, true);
   }
-  ui.rebirthBtn(maxed ? 1 : Math.min(1, state.money / cost), !maxed && state.money >= cost, maxed ? '★' : '×' + String(multiplier(R + 1)).replace('.', ','), state.tut.buys > 0);
+  ui.rebirthBtn(maxed ? 1 : Math.min(1, state.money / cost), !maxed && state.money >= cost, rbMult, state.tut.buys > 0);
   const moneyFloors = [];
   const viralFloors = [];
   for (let f = 0; f < floors.length; f++) {
@@ -1792,7 +1824,8 @@ function frame() {
     frameTimes.push(ft);
     if (frameTimes.length > 180) frameTimes.shift();
     playT += ft / 1000;
-    if (!qualityChecked && playT > 2 && frameTimes.length >= 20) {
+    if (playT < 1) frameTimes.length = 0;
+    if (!qualityChecked && playT > 2.5 && frameTimes.length >= 20) {
       const s = [...frameTimes].sort((a, b) => a - b);
       const med = s[Math.floor(s.length / 2)];
       if (med > 25 && quality === 'high' && dbgVal('quality') !== 'high') {

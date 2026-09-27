@@ -1,5 +1,5 @@
 import { ICONS, applyIcons } from './icons.js';
-import { RARITIES, CREATORS, THEMES, fmt, fmtFull, PAGE_BONUS } from './data.js';
+import { RARITIES, CREATORS, THEMES, fmt, fmtFull, fmtMult, PAGE_BONUS } from './data.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -37,13 +37,25 @@ export class UI {
     fn(val);
   }
 
-  money(display, rate, mult) {
+  money(display, rate, mult, pending = 0, viral = false) {
     this.set('money', fmt(display), (v) => (this.el.moneyText.textContent = v));
-    this.set('rate', '+' + fmt(rate) + '/sn', (v) => (this.el.rateText.textContent = v));
+    const key = '+' + fmt(rate + pending) + '/sn' + (pending > 0 ? 'p' : '') + (viral ? 'v' : '');
+    this.set('rate', key, () => {
+      this.el.rateText.classList.toggle('pending', pending > 0);
+      this.el.rateText.classList.toggle('viral', viral);
+      this.el.rateText.innerHTML = (viral ? `<span class="rt-fire">${ICONS.fire}</span>` : '') + (pending > 0 ? `<span class="rt-walk">${ICONS.boot}</span>` : '') + '+' + fmt(rate + pending) + '/sn';
+    });
     this.set('mult', mult, (v) => {
       this.el.mult.classList.toggle('hidden', v <= 1.001);
-      this.el.mult.textContent = '×' + String(Math.round(v * 100) / 100).replace('.', ',');
+      this.el.mult.textContent = '×' + fmtMult(v);
     });
+  }
+
+  ratePulse() {
+    const r = this.el.rateText;
+    r.classList.remove('pulse');
+    void r.offsetWidth;
+    r.classList.add('pulse');
   }
 
   punch() {
@@ -65,7 +77,10 @@ export class UI {
     });
     this.set('goalGo', go, (v) => this.el.goalGo.classList.toggle('hidden', !v));
     this.set('goalW', Math.round(frac * 200), (v) => (this.el.goalFill.style.width = v / 2 + '%'));
-    this.set('goalT', text, (v) => (this.el.goalNum.textContent = v));
+    this.set('goalT', (ready ? 'r' : 't') + text, () => {
+      if (ready) this.el.goalNum.innerHTML = `<span class="gn-rb"><span class="gn-ic">${ICONS.rebirth}</span>${text}</span>`;
+      else this.el.goalNum.textContent = text;
+    });
     this.set('goalR', ready, (v) => this.el.goal.classList.toggle('ready', v));
     this.set('goalG', green, (v) => this.el.goalFill.classList.toggle('green', v));
   }
@@ -213,6 +228,7 @@ export class UI {
     el.style.borderColor = rc;
     el.style.background = r.rainbow ? 'linear-gradient(120deg,#ff3b3b,#ffd23a,#35ff7a,#35d6ff,#b44dff)' : '';
     el.innerHTML = `<img class="rv-img" src="${img}" alt=""><div class="rv-col"><span class="rv-rar" style="color:${r.rainbow ? '#fff' : r.glow}">${r.name}</span><span class="rv-name">${def.name}</span><span class="rv-inc">+${fmt(inc)}/sn${multTag ? ' <span style="color:#e7a6ff">' + multTag + '</span>' : ''}</span></div>`;
+    el.classList.toggle('mini', this.modalKind === 'shop');
     el.classList.remove('hidden', 'out');
     el.style.animation = 'none';
     void el.offsetWidth;
@@ -221,7 +237,7 @@ export class UI {
     this.revealT = setTimeout(() => {
       el.classList.add('out');
       setTimeout(() => el.classList.add('hidden'), 300);
-    }, def.r >= 2 ? 2600 : 1800);
+    }, this.modalKind === 'shop' ? 1500 : def.r >= 2 ? 2600 : 1800);
   }
 
   viralBanner() {
@@ -271,12 +287,21 @@ export class UI {
     this.bigT = setTimeout(() => b.classList.add('hidden'), 2400);
   }
 
-  arrowAt(x, y, rot) {
+  arrowAt(x, y, rot, tag = '') {
     const a = this.el.arrow;
     if (x === null) {
       a.classList.add('hidden');
       return;
     }
+    if (!this.el.arrowTag) {
+      this.el.arrowTag = document.createElement('span');
+      this.el.arrowTag.className = 'ga-tag gn-rb hidden';
+      a.appendChild(this.el.arrowTag);
+    }
+    this.set('arrowTag', tag, (v) => {
+      this.el.arrowTag.innerHTML = v ? `<span class="gn-ic">${ICONS.rebirth}</span>` : '';
+      this.el.arrowTag.classList.toggle('hidden', !v);
+    });
     a.classList.remove('hidden');
     a.style.left = x - 35 + 'px';
     a.style.top = y - 35 + 'px';
@@ -323,7 +348,7 @@ export class UI {
           <div class="rl-heads">${heads}</div>
         </div>
         <div class="rb-gain">
-          <div class="rg"><div class="rg-big" style="color:#e7a6ff">×${String(d.newMult).replace('.', ',')}</div><span class="rg-lbl">${'×' + String(d.oldMult).replace('.', ',')} → ${'×' + String(d.newMult).replace('.', ',')}</span></div>
+          <div class="rg"><div class="rg-big" style="color:#e7a6ff">×${fmtMult(d.newMult)}</div><span class="rg-lbl">${'×' + fmtMult(d.oldMult)} → ${'×' + fmtMult(d.newMult)}</span></div>
           <div class="rg"><div class="rg-floor" style="background:linear-gradient(${d.theme.led},${d.theme.accent});--fc:${d.theme.led}">${d.floors}</div><span class="rg-lbl">+8 <span style="display:inline-block;width:30px;height:30px;vertical-align:-6px">${ICONS.desk}</span></span></div>
           ${newR ? `<div class="rg"><div class="rg-chip" style="background:${newR.rainbow ? 'linear-gradient(90deg,#ff3b3b,#ffd23a,#35ff7a,#35d6ff,#b44dff)' : newR.color}">${newR.name}</div><span class="rg-lbl"><span style="display:inline-block;width:30px;height:30px;vertical-align:-6px">${ICONS.lock}</span> → <span style="display:inline-block;width:30px;height:30px;vertical-align:-6px">${ICONS.check}</span></span></div>` : ''}
           <div class="rg"><span class="rg-ic" data-icon="book"></span><span class="rg-lbl"><span style="display:inline-block;width:30px;height:30px;vertical-align:-6px">${ICONS.check}</span></span></div>
@@ -468,8 +493,9 @@ export class UI {
     let newly = false;
     document.querySelectorAll('#shopGrid .scard').forEach((el) => {
       const c = this.shop.cards[Number(el.dataset.i)];
-      const ok = !c.locked && c.stock > 0 && money >= c.def.price;
-      el.classList.toggle('blk', !c.locked && c.stock > 0 && !!this.blocked && this.blocked(c.def));
+      const blk = !c.locked && c.stock > 0 && !!this.blocked && this.blocked(c.def);
+      const ok = !c.locked && c.stock > 0 && money >= c.def.price && !blk;
+      el.classList.toggle('blk', blk);
       const out = !c.locked && c.stock > 0 && this.swapOut ? this.swapOut(c.def) : null;
       el.classList.toggle('swp', !!out);
       const si = el.querySelector('.sc-swap img');

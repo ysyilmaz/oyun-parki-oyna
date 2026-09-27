@@ -175,6 +175,10 @@ export function fmt(n) {
   return (Math.floor(x * 10) / 10).toString().replace('.', ',') + u;
 }
 
+export function fmtMult(v) {
+  return String(Math.round(v * 100) / 100).replace('.', ',');
+}
+
 export function fmtFull(n) {
   return Math.floor(n).toLocaleString('tr-TR');
 }

@@ -66,7 +66,8 @@ export function wallBoxes(f) {
 
 export const OUTDOOR_BOXES = [
   [SHOP.x - SHOP.w / 2 - 0.3, SHOP.x + SHOP.w / 2 + 0.3, SHOP.z - SHOP.d / 2 - 0.3, SHOP.z + SHOP.d / 2 + 0.5],
-  ...SHOP.pedestals.map(([x, z]) => [x - 0.9, x + 0.9, z - 0.9, z + 0.9]),
+  [SHOP.pedestals[0][0] - 0.9, SHOP.pedestals[1][0] + 0.9, SHOP.z + SHOP.d / 2, SHOP.pedestals[0][1] + 0.9],
+  [SHOP.pedestals[2][0] - 0.9, SHOP.pedestals[3][0] + 0.9, SHOP.z + SHOP.d / 2, SHOP.pedestals[2][1] + 0.9],
   [-6.0, -5.2, 12.6, 13.4],
   [5.2, 6.0, 12.6, 13.4],
 ];

@@ -400,7 +400,6 @@ export class Elevator {
     const { cx, cz, hx, hz } = ELEV;
     const cab = merge([
       part(rbox(hx * 2, 0.25, hz * 2, 0.06), '#e9edf5', M(cx, -0.1, cz)),
-      part(rbox(hx * 2, 0.2, hz * 2, 0.06), '#e9edf5', M(cx, 3.5, cz)),
       part(rbox(0.16, 3.6, 0.16, 0.05), '#e9edf5', M(cx - hx, 1.7, cz - hz)),
       part(rbox(0.16, 3.6, 0.16, 0.05), '#e9edf5', M(cx - hx, 1.7, cz + hz)),
       part(rbox(0.16, 3.6, 0.16, 0.05), '#e9edf5', M(cx + hx, 1.7, cz - hz)),
@@ -413,6 +412,9 @@ export class Elevator {
     cm.castShadow = true;
     cm.receiveShadow = true;
     this.cabin.add(cm);
+    this.cabinRoof = new THREE.Mesh(merge([part(rbox(hx * 2, 0.2, hz * 2, 0.06), '#e9edf5', M(cx, 3.5, cz))]), vcMetal);
+    this.cabinRoof.castShadow = true;
+    this.cabin.add(this.cabinRoof);
     const fl = new THREE.Mesh(new THREE.PlaneGeometry(hx * 2 - 0.2, hz * 2 - 0.2), new THREE.MeshStandardMaterial({ color: '#2a2e3d', roughness: 0.3, metalness: 0.4 }));
     fl.rotation.x = -Math.PI / 2;
     fl.position.set(cx, 0.03, cz);
@@ -420,7 +422,7 @@ export class Elevator {
     this.cabin.add(fl);
     const lightStrip = new THREE.Mesh(new THREE.BoxGeometry(hx * 2 - 0.4, 0.05, hz * 2 - 0.4), new THREE.MeshBasicMaterial({ color: new THREE.Color(2, 2, 2.2) }));
     lightStrip.position.set(cx, 3.38, cz);
-    this.cabin.add(lightStrip);
+    this.cabinRoof.add(lightStrip);
     const ringGlow = new THREE.Mesh(new THREE.RingGeometry(1.0, 1.25, 40), new THREE.MeshBasicMaterial({ color: new THREE.Color('#35d6ff').multiplyScalar(2), transparent: true, opacity: 0.9, depthWrite: false }));
     ringGlow.rotation.x = -Math.PI / 2;
     ringGlow.position.set(cx, 0.05, cz);
