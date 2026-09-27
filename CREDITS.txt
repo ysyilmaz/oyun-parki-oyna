@@ -1,0 +1,2 @@
+Three.js (MIT) - https://threejs.org
+All characters and scenes are generated in code.

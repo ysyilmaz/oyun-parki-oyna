@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Yayıncı Kulesi</title>
+<link rel="icon" href="data:,">
+<meta name="theme-color" content="#1b1336">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">{"imports":{"three":"../../vendor/three/build/three.module.js","three/addons/":"../../vendor/three/jsm/"}}</script>
+</head>
+<body>
+<canvas id="game" tabindex="-1"></canvas>
+<div id="labels"></div>
+<div id="guideArrow" class="guide-arrow hidden"><span data-icon="up"></span></div>
+
+<div id="loading" class="loading"><div class="spin"></div></div>
+
+<div id="title" class="title hidden">
+  <div class="title-logo"><span class="logo-play" data-icon="play"></span><div class="logo-text"><span class="l1">YAYINCI</span><span class="l2">KULESİ</span></div></div>
+  <button id="playBtn" class="play-btn" aria-label="Oyna"><span class="pb-ic" data-icon="resume"></span><span>OYNA</span></button>
+</div>
+
+<div id="hud" class="hidden">
+  <div class="money" id="moneyPill">
+    <span class="money-ic" data-icon="coin"></span>
+    <div class="money-col"><span id="moneyText" class="money-text">0</span><span id="rateText" class="rate-text">+0/sn</span></div>
+    <span id="multBadge" class="mult-badge hidden">×1</span>
+  </div>
+
+  <div class="goal" id="goal">
+    <span class="goal-ic" id="goalIc"></span>
+    <div class="goal-col"><div class="goal-bar"><div class="goal-fill" id="goalFill"></div><span class="goal-num" id="goalNum"></span></div><span class="goal-sub" id="goalSub"></span></div>
+    <span class="goal-go hidden" id="goalGo" data-icon="up"></span>
+  </div>
+
+  <div class="topright">
+    <button class="round-btn" id="btnBook" aria-label="Koleksiyon"><span data-icon="book"></span><span class="rb-badge hidden" id="bookBadge"></span></button>
+    <button class="round-btn" id="btnMute" aria-label="Ses"><span data-icon="sound"></span></button>
+    <button class="round-btn" id="btnPause" aria-label="Durdur"><span data-icon="pause"></span></button>
+  </div>
+
+  <div class="tower-map" id="towerMap"></div>
+
+  <button class="rebirth-btn" id="rebirthBtn" aria-label="Yeniden Doğ">
+    <svg class="rb-ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" class="rb-track"/><circle cx="50" cy="50" r="44" class="rb-prog" id="rebirthRing"/></svg>
+    <span class="rb-ic" data-icon="rebirth"></span>
+    <span class="rb-mult" id="rebirthMult">×1,5</span>
+  </button>
+
+  <div class="prompt hidden" id="prompt">
+    <span class="key key-e">E</span>
+    <svg class="hold-ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" id="holdRing"/></svg>
+    <span class="prompt-ic" id="promptIc"></span>
+    <span class="prompt-text" id="promptText"></span>
+  </div>
+
+  <div class="elev-panel hidden" id="elevPanel"></div>
+
+
+  <div class="keys-hint" id="keysHint">
+    <div class="kgrid"><span class="key k-w">↑</span><span class="key k-a">←</span><span class="key k-s">↓</span><span class="key k-d">→</span></div>
+    <span class="key key-e small-e">E</span>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+  <div class="viral-banner hidden" id="viralBanner"><span class="vb-fire" data-icon="fire"></span><span class="vb-text">Viral oldu!</span><span class="vb-x">×3</span></div>
+
+  <div id="joy" class="joy"><div class="joy-knob"></div></div>
+  <button id="actBtn" class="act-btn hidden" aria-label="Eylem"><svg class="hold-ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" id="actRing"/></svg><span class="act-ic" id="actIc"></span></button>
+  <button id="jumpBtn" class="jump-btn hidden" aria-label="Zıpla"><span data-icon="up"></span></button>
+</div>
+
+<div id="modal" class="modal hidden"><div class="modal-card" id="modalCard"></div></div>
+<div class="reveal hidden" id="reveal"></div>
+<button class="undo hidden" id="undoBtn"><span class="undo-ic" data-icon="undo"></span><span>Geri al</span><span class="undo-bar"><span id="undoFill"></span></span></button>
+<button id="glLost" class="gl-lost hidden" aria-label="Yeniden yükle"><span data-icon="reload"></span></button>
+<div class="full-pop hidden" id="fullPop"></div>
+<div id="flash" class="flash"></div>
+<div id="bigMult" class="big-mult hidden"></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

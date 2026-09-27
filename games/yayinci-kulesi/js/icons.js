@@ -1,0 +1,45 @@
+const O = '#1b1336';
+
+export const ICONS = {
+  coin: `<svg viewBox="0 0 64 64"><circle cx="32" cy="35" r="26" fill="#e08a00" stroke="${O}" stroke-width="4"/><circle cx="32" cy="30" r="26" fill="#ffc21a" stroke="${O}" stroke-width="4"/><circle cx="32" cy="30" r="17" fill="none" stroke="#e08a00" stroke-width="4"/><path d="M32 19l3.2 6.6 7.2 1-5.2 5 1.3 7.2L32 35.4l-6.5 3.4 1.3-7.2-5.2-5 7.2-1z" fill="#fff3a8"/><ellipse cx="20" cy="17" rx="6" ry="3.5" fill="#fff" opacity=".8" transform="rotate(-35 20 17)"/></svg>`,
+  cart: `<svg viewBox="0 0 64 64"><path d="M14 20h42l-6 24H20z" fill="#35d67a" stroke="${O}" stroke-width="4" stroke-linejoin="round"/><path d="M4 10h9l8 34" fill="none" stroke="${O}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="24" cy="54" r="5" fill="#fff" stroke="${O}" stroke-width="4"/><circle cx="46" cy="54" r="5" fill="#fff" stroke="${O}" stroke-width="4"/><path d="M28 31h14M35 25v12" stroke="#fff" stroke-width="5" stroke-linecap="round"/></svg>`,
+  play: `<svg viewBox="0 0 64 64"><g fill="none" stroke-linecap="round"><path d="M12 20a18 18 0 0 0 0 24M52 20a18 18 0 0 1 0 24M5 13a28 28 0 0 0 0 38M59 13a28 28 0 0 1 0 38" stroke="${O}" stroke-width="9"/><path d="M12 20a18 18 0 0 0 0 24M52 20a18 18 0 0 1 0 24M5 13a28 28 0 0 0 0 38M59 13a28 28 0 0 1 0 38" stroke="#35d6ff" stroke-width="4.5"/></g><path d="M32 12l5.6 11.6 12.6 1.6-9.2 8.8 2.3 12.6L32 40.4l-11.3 6.2 2.3-12.6-9.2-8.8 12.6-1.6z" fill="#ffd23a" stroke="${O}" stroke-width="4" stroke-linejoin="round"/><circle cx="32" cy="31" r="3.5" fill="#fff"/></svg>`,
+  resume: `<svg viewBox="0 0 64 64"><path d="M18 8l38 24-38 24z" fill="#fff" stroke="${O}" stroke-width="5" stroke-linejoin="round"/></svg>`,
+  pause: `<svg viewBox="0 0 64 64"><rect x="14" y="10" width="13" height="44" rx="4" fill="#fff" stroke="${O}" stroke-width="4"/><rect x="37" y="10" width="13" height="44" rx="4" fill="#fff" stroke="${O}" stroke-width="4"/></svg>`,
+  sound: `<svg viewBox="0 0 64 64"><path d="M8 24h12l14-12v40L20 40H8z" fill="#fff" stroke="${O}" stroke-width="4" stroke-linejoin="round"/><path d="M42 22c4 5 4 15 0 20M49 15c8 9 8 25 0 34" fill="none" stroke="${O}" stroke-width="5" stroke-linecap="round"/></svg>`,
+  mute: `<svg viewBox="0 0 64 64"><path d="M8 24h12l14-12v40L20 40H8z" fill="#aab2d9" stroke="${O}" stroke-width="4" stroke-linejoin="round"/><path d="M42 24l16 16M58 24L42 40" stroke="#ff4f5a" stroke-width="6" stroke-linecap="round"/></svg>`,
+  x: `<svg viewBox="0 0 64 64"><path d="M14 14l36 36M50 14L14 50" stroke="${O}" stroke-width="14" stroke-linecap="round"/><path d="M14 14l36 36M50 14L14 50" stroke="#fff" stroke-width="7" stroke-linecap="round"/></svg>`,
+  check: `<svg viewBox="0 0 64 64"><path d="M12 34l14 14 26-30" fill="none" stroke="${O}" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 34l14 14 26-30" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  rebirth: `<svg viewBox="0 0 64 64"><path d="M32 8a24 24 0 1 1-22 14" fill="none" stroke="${O}" stroke-width="10" stroke-linecap="round"/><path d="M32 8a24 24 0 1 1-22 14" fill="none" stroke="#c46bff" stroke-width="5" stroke-linecap="round"/><path d="M4 14l8 12 12-7" fill="#c46bff" stroke="${O}" stroke-width="4" stroke-linejoin="round"/><path d="M32 22l3.5 7 7.5 1-5.5 5 1.5 7.5L32 39l-6.5 3.5L27 35l-5.5-5 7.5-1z" fill="#ffd23a" stroke="${O}" stroke-width="2.5" stroke-linejoin="round"/></svg>`,
+  book: `<svg viewBox="0 0 64 64"><path d="M10 12c8-3 16-3 22 3 6-6 14-6 22-3v40c-8-3-16-3-22 3-6-6-14-6-22-3z" fill="#fff" stroke="${O}" stroke-width="4" stroke-linejoin="round"/><path d="M32 15v40" stroke="${O}" stroke-width="4"/><circle cx="21" cy="30" r="6" fill="#2f8cff"/><circle cx="43" cy="30" r="6" fill="#a24dff"/><circle cx="21" cy="43" r="4" fill="#ffb81f"/><circle cx="43" cy="43" r="4" fill="#ff4fa8"/></svg>`,
+  desk: `<svg viewBox="0 0 64 64"><rect x="10" y="8" width="44" height="28" rx="5" fill="#2b2f40" stroke="${O}" stroke-width="4"/><rect x="15" y="13" width="34" height="18" rx="3" fill="#35d6ff"/><path d="M29 18l8 4-8 4z" fill="#fff"/><path d="M6 44h52" stroke="${O}" stroke-width="6" stroke-linecap="round"/><path d="M14 44v12M50 44v12" stroke="${O}" stroke-width="5" stroke-linecap="round"/></svg>`,
+  elevator: `<svg viewBox="0 0 64 64"><rect x="10" y="6" width="44" height="52" rx="6" fill="#dff4ff" stroke="${O}" stroke-width="4"/><path d="M32 6v52" stroke="${O}" stroke-width="3"/><path d="M21 22l-6 8h12zM43 38l-6-8h12z" fill="#2f8cff" stroke="${O}" stroke-width="2.5" stroke-linejoin="round"/></svg>`,
+  sell: `<svg viewBox="0 0 64 64"><circle cx="30" cy="34" r="22" fill="#ffc21a" stroke="${O}" stroke-width="4"/><path d="M30 22v24M22 30l8-8 8 8" fill="none" stroke="${O}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="50" cy="14" r="10" fill="#ff4f5a" stroke="${O}" stroke-width="3"/><path d="M45 14h10" stroke="#fff" stroke-width="4" stroke-linecap="round"/></svg>`,
+  reload: `<svg viewBox="0 0 64 64"><path d="M50 22A21 21 0 1 0 53 36" fill="none" stroke="${O}" stroke-width="11" stroke-linecap="round"/><path d="M50 22A21 21 0 1 0 53 36" fill="none" stroke="#fff" stroke-width="5.5" stroke-linecap="round"/><path d="M40 6l14 16-20 4z" fill="#fff" stroke="${O}" stroke-width="4" stroke-linejoin="round"/></svg>`,
+  undo: `<svg viewBox="0 0 64 64"><path d="M20 22h22a14 14 0 0 1 0 28H24" fill="none" stroke="${O}" stroke-width="10" stroke-linecap="round"/><path d="M20 22h22a14 14 0 0 1 0 28H24" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/><path d="M26 8L10 22l16 14z" fill="#fff" stroke="${O}" stroke-width="4" stroke-linejoin="round"/></svg>`,
+  fire: `<svg viewBox="0 0 64 64"><path d="M32 4c4 12 18 18 18 34a18 18 0 0 1-36 0c0-10 6-14 8-22 4 6 4 10 8 12 2-8 0-16 2-24z" fill="#ff6a1f" stroke="${O}" stroke-width="4" stroke-linejoin="round"/><path d="M32 30c3 7 10 10 10 18a10 10 0 0 1-20 0c0-6 4-8 5-12 2 3 3 5 5 6z" fill="#ffd23a"/></svg>`,
+  person: `<svg viewBox="0 0 64 64"><circle cx="32" cy="20" r="12" fill="#fff" stroke="${O}" stroke-width="4"/><path d="M8 58c0-14 10-22 24-22s24 8 24 22z" fill="#fff" stroke="${O}" stroke-width="4" stroke-linejoin="round"/></svg>`,
+  moon: `<svg viewBox="0 0 64 64"><path d="M40 6a26 26 0 1 0 18 40A22 22 0 0 1 40 6z" fill="#ffd23a" stroke="${O}" stroke-width="4" stroke-linejoin="round"/><circle cx="18" cy="16" r="3" fill="#fff"/><circle cx="10" cy="30" r="2" fill="#fff"/></svg>`,
+  star: `<svg viewBox="0 0 64 64"><path d="M32 5l8 17 18 2-13 13 3 19-16-9-16 9 3-19L6 24l18-2z" fill="#ffd23a" stroke="${O}" stroke-width="4" stroke-linejoin="round"/></svg>`,
+  lock: `<svg viewBox="0 0 64 64"><path d="M20 28V20a12 12 0 0124 0v8" fill="none" stroke="${O}" stroke-width="7"/><rect x="10" y="27" width="44" height="32" rx="8" fill="#aab2d9" stroke="${O}" stroke-width="4"/><circle cx="32" cy="41" r="5" fill="${O}"/></svg>`,
+  floor: `<svg viewBox="0 0 64 64"><rect x="12" y="6" width="40" height="54" rx="4" fill="#fff" stroke="${O}" stroke-width="4"/><path d="M12 22h40M12 38h40" stroke="${O}" stroke-width="3"/><rect x="18" y="11" width="8" height="7" fill="#35d6ff"/><rect x="38" y="27" width="8" height="7" fill="#ffd23a"/><rect x="18" y="43" width="8" height="7" fill="#ff4fa8"/></svg>`,
+  plus: `<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="26" fill="#35d67a" stroke="${O}" stroke-width="4"/><path d="M32 18v28M18 32h28" stroke="#fff" stroke-width="7" stroke-linecap="round"/></svg>`,
+  hand: `<svg viewBox="0 0 64 64"><path d="M24 34V12a5 5 0 0 1 10 0v16l2-1a5 5 0 0 1 9 2l1 0a5 5 0 0 1 8 4v12c0 9-7 15-16 15h-4c-6 0-10-3-13-8l-8-12a5 5 0 0 1 8-6z" fill="#fff" stroke="${O}" stroke-width="4" stroke-linejoin="round"/></svg>`,
+  boot: `<svg viewBox="0 0 64 64"><path d="M16 8h18v24l18 8c4 2 6 5 6 9v5H10V30z" fill="#ff5f5f" stroke="${O}" stroke-width="4" stroke-linejoin="round"/><path d="M10 48h48" stroke="${O}" stroke-width="4"/></svg>`,
+  up: `<svg viewBox="0 0 64 64"><path d="M32 8L8 34h14v20h20V34h14z" fill="#fff" stroke="${O}" stroke-width="4" stroke-linejoin="round"/></svg>`,
+  full: `<svg viewBox="0 0 64 64"><rect x="10" y="8" width="44" height="28" rx="5" fill="#8c93a8" stroke="${O}" stroke-width="4"/><path d="M6 44h52" stroke="${O}" stroke-width="6" stroke-linecap="round"/><circle cx="46" cy="46" r="13" fill="#ff4f5a" stroke="${O}" stroke-width="4"/><path d="M40 46h12" stroke="#fff" stroke-width="5" stroke-linecap="round"/></svg>`,
+  home: `<svg viewBox="0 0 64 64"><path d="M8 30L32 8l24 22v26H8z" fill="#fff" stroke="${O}" stroke-width="4" stroke-linejoin="round"/><rect x="26" y="38" width="12" height="18" fill="#ff5f5f" stroke="${O}" stroke-width="3"/></svg>`,
+};
+
+export function icon(name, cls = '') {
+  return `<span class="ic ${cls}">${ICONS[name] || ''}</span>`;
+}
+
+export function applyIcons(root = document) {
+  root.querySelectorAll('[data-icon]').forEach((el) => {
+    if (!el.dataset.done) {
+      el.innerHTML = ICONS[el.dataset.icon] || '';
+      el.dataset.done = '1';
+    }
+  });
+}
