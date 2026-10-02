@@ -24,6 +24,7 @@ export class CameraRig {
     this.lift = 0;
     this.watch = null;
     this.watchK = 0;
+    this.flightK = 0;
   }
 
   dirAt(pitch) {
@@ -40,6 +41,7 @@ export class CameraRig {
     this.lift = 0;
     this.watch = null;
     this.watchK = 0;
+    this.flightK = 0;
   }
 
   kick(amount) {
@@ -84,15 +86,26 @@ export class CameraRig {
     }
     this.lift += (lift - this.lift) * (1 - Math.exp(-(lift > this.lift ? 14 : 3) * dt));
     if (this.watch) this.watchK = Math.min(1, this.watchK + dt * 4);
+    const aim = player.padFlight && !player.grounded && player.aim ? player.aim.target : null;
+    this.flightK += ((aim ? 1 : 0) - this.flightK) * (1 - Math.exp(-(aim ? 3 : 6) * dt));
     const pitch = this.pitch + this.lift;
-    this.dirAt(pitch + this.watchK * Math.max(0, 1.05 - pitch));
+    this.dirAt(pitch + this.watchK * Math.max(0, 0.48 - pitch) - this.flightK * Math.max(0, pitch - 0.12));
     const kd = want < this.curDist ? 1 - Math.exp(-25 * dt) : 1 - Math.exp(-4 * dt);
     this.curDist += (want - this.curDist) * kd;
     this.cam.position.copy(this.target).addScaledVector(_d, this.curDist);
     const minY = this.target.y - 1.2;
     if (this.cam.position.y < minY && this.pitch < 0) this.cam.position.y = minY;
     _look.copy(this.target);
-    if (this.watch) _look.lerp(this.watch, this.watchK * 0.6);
+    if (this.watch) {
+      _t.copy(this.watch);
+      _t.y = Math.max(_t.y, this.target.y - 3.5);
+      _look.lerp(_t, this.watchK * 0.25);
+    }
+    if (aim) {
+      this.flightAt = this.flightAt || new THREE.Vector3();
+      this.flightAt.set(aim.x, aim.y + 0.5, aim.z);
+    }
+    if (this.flightK > 0.01 && this.flightAt) _look.lerp(this.flightAt, this.flightK * 0.45);
     this.applyShake(dt);
     this.cam.lookAt(_look);
     this.updateFov(dt);

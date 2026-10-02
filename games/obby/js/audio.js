@@ -142,6 +142,11 @@ export class Sound {
     this.tone(90, 0.2, { type: 'triangle', vol: 0.12, slide: 0.6 });
   }
 
+  creak() {
+    this.tone(150, 0.34, { type: 'sawtooth', vol: 0.06, slide: 0.7 });
+    this.noise(0.28, { vol: 0.07, freq: 700, type: 'bandpass', q: 6, slide: 0.8 });
+  }
+
   death() {
     this.tone(520, 0.35, { type: 'square', vol: 0.08, slide: 0.35 });
     this.tone(380, 0.4, { type: 'triangle', vol: 0.14, slide: 0.3, when: 0.05 });

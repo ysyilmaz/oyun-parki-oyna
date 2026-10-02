@@ -211,6 +211,7 @@ export function rock(kind = 'dirt') {
       dirt: [hex(0x7a5236), hex(0xb07a4c), hex(0x5e3d27)],
       basalt: [hex(0x2e2733), hex(0x4d4252), hex(0x1c171f)],
       ice: [hex(0x9fd8ff), hex(0xe4f6ff), hex(0x6ab8ef)],
+      root: [hex(0x3a2a1e), hex(0x6a4c34), hex(0x22180f)],
     }[kind];
     const c = paint(S, (x, y) => {
       const w = n(x, y);
@@ -512,6 +513,174 @@ export function wood() {
   });
 }
 
+export function moss() {
+  return memo('moss', () => {
+    const S = 256;
+    const n = fbm(S, 171, 4, 4);
+    const n2 = fbm(S, 177, 3, 16);
+    const a = hex(0x2f5e3c);
+    const b = hex(0x6a9a5a);
+    const c = paint(S, (x, y) => {
+      const t = Math.min(1, Math.max(0, n(x, y) * 1.2 + n2(x, y) * 0.4 - 0.35));
+      return mix3(a, b, t);
+    });
+    const ctx = c.getContext('2d');
+    const r = mulberry(181);
+    for (let i = 0; i < 700; i++) {
+      const x = r() * S;
+      const y = r() * S;
+      const l = 2 + r() * 4;
+      ctx.strokeStyle = r() > 0.5 ? `rgba(130,190,120,${0.25 + r() * 0.25})` : `rgba(20,50,30,${0.2 + r() * 0.25})`;
+      ctx.lineWidth = 1 + r();
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + (r() - 0.5) * 2, y - l);
+      ctx.stroke();
+    }
+    for (let i = 0; i < 18; i++) {
+      ctx.fillStyle = `rgba(220,235,190,${0.25 + r() * 0.2})`;
+      ctx.beginPath();
+      ctx.arc(r() * S, r() * S, 1.2 + r() * 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    return tex(c);
+  });
+}
+
+export function bark() {
+  return memo('bark', () => {
+    const S = 256;
+    const n = fbm(S, 191, 4, 4);
+    const c = paint(S, (x, y) => {
+      const w = n(x, y);
+      const f = Math.abs(Math.sin((x / S) * Math.PI * 12 + w * 7));
+      let col = mix3(hex(0x2e2016), hex(0x6e5038), Math.pow(f, 0.6) * 0.8 + w * 0.3);
+      if (f < 0.12) col = mix3(col, hex(0x140c08), 0.7);
+      return col;
+    });
+    const ctx = c.getContext('2d');
+    const r = mulberry(197);
+    for (let i = 0; i < 70; i++) {
+      ctx.fillStyle = `rgba(110,170,110,${0.18 + r() * 0.25})`;
+      ctx.beginPath();
+      ctx.ellipse(r() * S, r() * S, 3 + r() * 9, 2 + r() * 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    return tex(c);
+  });
+}
+
+export function mossWood() {
+  return memo('mossWood', () => {
+    const S = 256;
+    const n = fbm(S, 211, 4, 4);
+    const m = fbm(S, 223, 4, 4);
+    const c = paint(S, (x, y) => {
+      const dx = (x % 128) - 64;
+      const dy = (y % 128) - 64;
+      const d = Math.sqrt(dx * dx + dy * dy) + n(x, y) * 26;
+      const ring = 0.5 + 0.5 * Math.sin(d * 0.55);
+      let col = mix3(hex(0xa8835c), hex(0xe2c8a0), ring * 0.55 + 0.25);
+      const moss = m(x, y);
+      if (moss > 0.56) col = mix3(col, hex(0xd8ead0), Math.min(1, (moss - 0.56) * 6) * 0.7);
+      return col;
+    });
+    const ctx = c.getContext('2d');
+    ctx.strokeStyle = 'rgba(60,40,20,0.35)';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(1.5, 1.5, S - 3, S - 3);
+    return tex(c);
+  });
+}
+
+export function leaf() {
+  return memo('leaf', () => {
+    const S = 256;
+    const n = fbm(S, 233, 4, 8);
+    const c = paint(S, (x, y) => {
+      const t = n(x, y);
+      return mix3(hex(0x2f7a3e), hex(0x6cc06a), t);
+    });
+    const ctx = c.getContext('2d');
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(210,255,190,0.55)';
+    ctx.lineWidth = 5;
+    for (const o of [0, 128]) {
+      ctx.beginPath();
+      ctx.moveTo(o + 64, 0);
+      ctx.lineTo(o + 64, S);
+      ctx.stroke();
+    }
+    ctx.lineWidth = 2.2;
+    for (const o of [0, 128]) {
+      for (let y = -20; y < S + 20; y += 26) {
+        for (const sx of [-1, 1]) {
+          ctx.beginPath();
+          ctx.moveTo(o + 64, y);
+          ctx.quadraticCurveTo(o + 64 + sx * 30, y - 6, o + 64 + sx * 60, y - 26);
+          ctx.stroke();
+        }
+      }
+    }
+    return tex(c);
+  });
+}
+
+export function puff() {
+  return memo('puff', () => {
+    const S = 256;
+    const n = fbm(S, 241, 4, 8);
+    const c = paint(S, (x, y) => {
+      const v = n(x, y);
+      return mix3(hex(0xcfc0a0), hex(0xf6eedc), v * 1.2 - 0.1);
+    });
+    const ctx = c.getContext('2d');
+    const r = mulberry(251);
+    for (let i = 0; i < 160; i++) {
+      const x = r() * S;
+      const y = r() * S;
+      const rr = 1.5 + r() * 3.5;
+      ctx.fillStyle = `rgba(150,120,80,${0.25 + r() * 0.3})`;
+      ctx.beginPath();
+      ctx.arc(x, y, rr, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,245,0.6)';
+      ctx.beginPath();
+      ctx.arc(x - rr * 0.3, y - rr * 0.3, rr * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    return tex(c);
+  });
+}
+
+export function strand() {
+  return memo('strand', () => {
+    const W = 64;
+    const H = 256;
+    const c = canvas(W, H);
+    const ctx = c.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+    const r = mulberry(263);
+    for (let i = 0; i < 9; i++) {
+      const x0 = 6 + r() * (W - 12);
+      const len = H * (0.45 + r() * 0.55);
+      ctx.strokeStyle = r() > 0.5 ? 'rgba(90,150,90,1)' : 'rgba(60,110,70,1)';
+      ctx.lineWidth = 2 + r() * 2;
+      ctx.beginPath();
+      ctx.moveTo(x0, 0);
+      for (let y = 0; y < len; y += 16) ctx.lineTo(x0 + Math.sin(y * 0.05 + i) * 4, y);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(120,190,110,1)';
+      for (let y = 12; y < len; y += 18 + r() * 14) {
+        ctx.beginPath();
+        ctx.ellipse(x0 + Math.sin(y * 0.05 + i) * 4 + (r() - 0.5) * 6, y, 3.5, 6, r(), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    return tex(c, { repeat: false });
+  });
+}
+
 export function neonPanel() {
   return memo('neonPanel', () => {
     const S = 256;
@@ -762,14 +931,14 @@ export function trampTop() {
   });
 }
 
-export function flag(num, active) {
+export function flag(num, active, on = ['#8dff7a', '#1faf45']) {
   const S = 256;
   const c = canvas(S, 160);
   const ctx = c.getContext('2d');
   const g = ctx.createLinearGradient(0, 0, 0, 160);
   if (active) {
-    g.addColorStop(0, '#8dff7a');
-    g.addColorStop(1, '#1faf45');
+    g.addColorStop(0, on[0]);
+    g.addColorStop(1, on[1]);
   } else {
     g.addColorStop(0, '#ffffff');
     g.addColorStop(1, '#c9d3e6');

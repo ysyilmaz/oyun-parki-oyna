@@ -26,12 +26,17 @@
     <symbol id="i-lock" viewBox="0 0 48 48"><rect x="9" y="21" width="30" height="22" rx="5" fill="#ffd34d" stroke="#5a3a00" stroke-width="4"/><path d="M15 21v-5a9 9 0 0118 0v5" stroke="#5a3a00" stroke-width="5" fill="none"/><circle cx="24" cy="31" r="3.5" fill="#5a3a00"/></symbol>
     <symbol id="i-star" viewBox="0 0 48 48"><path d="M24 4l6 12.6 13.8 2-10 9.7 2.4 13.7L24 35.5l-12.2 6.5 2.4-13.7-10-9.7 13.8-2z" stroke-linejoin="round"/></symbol>
     <symbol id="i-next" viewBox="0 0 48 48"><path d="M10 24h26M26 12l12 12-12 12" stroke="#fff" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-portal" viewBox="0 0 48 48"><circle cx="24" cy="24" r="17" fill="#c8ff4a" stroke="#27324a" stroke-width="4"/><circle cx="24" cy="24" r="9" fill="#5a3a22" stroke="#27324a" stroke-width="3"/><circle cx="24" cy="24" r="3.5" fill="#fff8c0"/></symbol>
+    <symbol id="i-trail" viewBox="0 0 48 48"><circle cx="10" cy="34" r="4" fill="#d8ff9a" stroke="#27324a" stroke-width="2.5"/><circle cx="21" cy="26" r="5.5" fill="#d8ff9a" stroke="#27324a" stroke-width="2.5"/><circle cx="35" cy="15" r="8" fill="#f4ffd0" stroke="#27324a" stroke-width="3"/></symbol>
     <symbol id="i-skip" viewBox="0 0 48 48"><path d="M8 10l16 14L8 38zM24 10l16 14-16 14z" fill="#fff" stroke="#27324a" stroke-width="3" stroke-linejoin="round"/></symbol>
     <symbol id="i-up" viewBox="0 0 48 48"><path d="M24 8L8 26h10v14h12V26h10z" fill="#fff" stroke="#27324a" stroke-width="3.5" stroke-linejoin="round"/></symbol>
     <symbol id="i-down" viewBox="0 0 48 48"><path d="M24 42L8 22h10V8h12v14h10z" fill="#7fd4ff" stroke="#27324a" stroke-width="3.5" stroke-linejoin="round"/></symbol>
     <symbol id="i-run" viewBox="0 0 48 48"><circle cx="29" cy="8" r="5" fill="#27324a"/><path d="M16 22l8-7 8 5 5 7M24 15l-3 13 8 6-2 10M21 28l-8 12" stroke="#27324a" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-dance" viewBox="0 0 48 48"><path d="M30 6v22a6 6 0 11-4-5.6V10l14-4v7l-10 3" fill="#27324a"/><circle cx="12" cy="34" r="3" fill="#ff4fd8"/><circle cx="40" cy="30" r="2.5" fill="#36a2ff"/></symbol>
     <symbol id="i-flag" viewBox="0 0 48 48"><path d="M12 6v38" stroke="#27324a" stroke-width="5" stroke-linecap="round"/><path d="M14 8h24l-6 8 6 8H14z" fill="#3ddc5a" stroke="#27324a" stroke-width="3" stroke-linejoin="round"/></symbol>
+    <symbol id="i-check" viewBox="0 0 48 48"><circle cx="24" cy="24" r="20" fill="#3ddc5a" stroke="#27324a" stroke-width="4"/><path d="M14 25l7 7 13-15" stroke="#fff" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-miss" viewBox="0 0 48 48"><circle cx="24" cy="24" r="20" fill="#ff4d5e" stroke="#27324a" stroke-width="4"/><path d="M16 16l16 16M32 16L16 32" stroke="#fff" stroke-width="6" stroke-linecap="round"/></symbol>
+    <symbol id="i-gift" viewBox="0 0 48 48"><rect x="7" y="20" width="34" height="22" rx="3" fill="#ff4fd8" stroke="#27324a" stroke-width="4"/><rect x="5" y="13" width="38" height="9" rx="3" fill="#ff8ae8" stroke="#27324a" stroke-width="4"/><path d="M24 13v29" stroke="#ffd22e" stroke-width="6"/><path d="M24 13c-4-8-13-8-12-2 1 4 8 3 12 2zM24 13c4-8 13-8 12-2-1 4-8 3-12 2z" fill="#ffd22e" stroke="#27324a" stroke-width="3" stroke-linejoin="round"/></symbol>
     <symbol id="i-trophy" viewBox="0 0 48 48"><path d="M14 6h20v12a10 10 0 01-20 0z" fill="#ffcf2e" stroke="#8a5a00" stroke-width="3.5"/><path d="M14 10H7c0 7 3 10 7 10M34 10h7c0 7-3 10-7 10" stroke="#8a5a00" stroke-width="3.5" fill="none"/><path d="M20 28h8v7h-8zM14 36h20v6H14z" fill="#ffcf2e" stroke="#8a5a00" stroke-width="3.5" stroke-linejoin="round"/></symbol>
   </defs>
 </svg>
@@ -53,6 +58,7 @@
   <div class="menu-left">
     <div class="logo"><span class="l1">Gökyüzü</span><span class="l2">Parkuru</span></div>
     <div class="worlds" id="worldCards"></div>
+    <div class="star-road" id="starRoad"></div>
     <div class="menu-actions">
       <button id="playBtn" class="btn btn-green btn-huge"><svg><use href="#i-play"/></svg><span>OYNA</span></button>
       <button id="shopBtn" class="btn btn-yellow btn-big"><svg><use href="#i-shop"/></svg><span>Mağaza</span></button>
@@ -80,6 +86,7 @@
 <div id="toast"></div>
 <div id="fallMsg"><svg class="ico"><use href="#i-down"/></svg><span>Düştün!</span></div>
 <div id="flyNum"></div>
+<div id="flyCoin"></div>
 <div id="banner"><span id="bannerText"></span></div>
 
 <div id="touch" class="hidden">
@@ -109,12 +116,12 @@
   <div class="card result-card">
     <div class="result-trophy"><svg><use href="#i-trophy"/></svg></div>
     <h2>Tebrikler!</h2>
-    <div class="stars" id="resStars"><svg class="star"><use href="#i-star"/></svg><svg class="star"><use href="#i-star"/></svg><svg class="star"><use href="#i-star"/></svg></div>
-    <div class="goals" id="resGoals">
-      <div class="goal" id="goalFinish"><svg class="ico"><use href="#i-flag"/></svg></div>
-      <div class="goal" id="goalBonus"><svg class="ico bonus-ico"><use href="#i-star"/></svg><b id="goalBonusN">0/0</b></div>
-      <div class="goal" id="goalPar"><svg class="ico"><use href="#i-clock"/></svg><b id="goalParT">1:30</b></div>
+    <div class="stars" id="resStars">
+      <div class="star-col"><svg class="star"><use href="#i-star"/></svg><div class="goal" id="goalFinish"><svg class="ico"><use href="#i-flag"/></svg><svg class="mark"><use href="#i-check"/></svg></div></div>
+      <div class="star-col"><svg class="star"><use href="#i-star"/></svg><div class="goal" id="goalBonus"><svg class="ico bonus-ico"><use href="#i-star"/></svg><b id="goalBonusN">0/0</b><svg class="mark"><use href="#i-check"/></svg></div></div>
+      <div class="star-col"><svg class="star"><use href="#i-star"/></svg><div class="goal" id="goalPar"><svg class="ico"><use href="#i-clock"/></svg><b id="goalParT">1:30</b><svg class="mark"><use href="#i-check"/></svg></div></div>
     </div>
+    <div class="pill reward-pill hidden" id="resReward"><svg class="ico"><use href="#i-gift"/></svg><svg class="ico"><use href="#i-coin"/></svg><b id="resRewardN">+50</b></div>
     <div class="res-rows">
       <div class="res-row"><svg class="ico"><use href="#i-clock"/></svg><span>Süre</span><b id="resTime">0:00</b></div>
       <div class="res-row"><svg class="ico"><use href="#i-coin"/></svg><span>Altın</span><b id="resCoins">0</b></div>

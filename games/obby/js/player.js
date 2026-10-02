@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { PHYS } from './levels.js';
+import { PHYS, FULL_HELP } from './levels.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import * as TX from './textures.js';
 
 const COYOTE = 0.14;
 const BUFFER = 0.14;
-const LEDGE = 1.05;
+const CLIMB = 0.16;
 
 function smoothNormals(g) {
   const pos = g.attributes.position;
@@ -86,6 +86,15 @@ const POSES = {
     o.armR = [-0.3 * k, -0.12 - 2.1 * k];
     o.legL = [-0.7 * k, 0];
     o.legR = [0.35 * k, 0];
+  },
+  Climb(t, o) {
+    const k = Math.min(1, t * 8);
+    o.tilt = 0.35 * k;
+    o.hx = -0.15 * k;
+    o.armL = [-2.6 * k, 0.2];
+    o.armR = [-2.6 * k, -0.2];
+    o.legL = [-1.1 * k, 0];
+    o.legR = [-0.3 * k, 0];
   },
   Death(t, o) {
     const k = Math.min(1, t * 5);
@@ -190,6 +199,17 @@ const ACC = {
       tail.rotation.set(0.5, 0, ry);
     }
   },
+  astro(grp, mat, part) {
+    const g = grp('head');
+    const glass = part(new THREE.SphereGeometry(0.66, 28, 18), mat(0xbfe8ff, { transparent: true, opacity: 0.28, roughness: 0.05, metalness: 0.1, depthWrite: false }), 0, 0.36, 0.02, g);
+    glass.castShadow = false;
+    glass.userData.noHull = true;
+    const collar = part(new THREE.TorusGeometry(0.46, 0.09, 10, 28), mat(0xffffff), 0, -0.04, 0, g);
+    collar.rotation.x = Math.PI / 2;
+    const b = grp('body');
+    part(rbox(0.5, 0.5, 0.24, 0.08), mat(0xffffff), 0, 0.3, -0.34, b);
+    part(new THREE.SphereGeometry(0.06, 10, 8), mat(0xff3d4f, { emissive: 0xff2030, emissiveIntensity: 0.8 }), 0.14, 0.44, -0.47, b).userData.noHull = true;
+  },
   crown(grp, mat, part) {
     const g = grp('head');
     const gold = mat(0xffc21a, { metalness: 0.8, roughness: 0.25, emissive: 0x6a4000, emissiveIntensity: 0.3 });
@@ -199,6 +219,48 @@ const ACC = {
       part(new THREE.ConeGeometry(0.07, 0.18, 4), gold, Math.sin(a) * 0.3, 0.88, Math.cos(a) * 0.3, g);
     }
     part(new THREE.SphereGeometry(0.06, 10, 8), mat(0xff3d4f, { emissive: 0xff0020, emissiveIntensity: 0.5 }), 0, 0.74, 0.31, g);
+  },
+  explorer(grp, mat, part) {
+    const g = grp('head');
+    const khaki = mat(0xd8c89a, { roughness: 0.7 });
+    const brim = part(new THREE.CylinderGeometry(0.62, 0.62, 0.05, 28), khaki, 0, 0.62, 0, g);
+    brim.scale.set(1, 1, 0.92);
+    const dome = part(new THREE.SphereGeometry(0.4, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), khaki, 0, 0.62, 0, g);
+    dome.scale.set(1, 0.62, 0.95);
+    part(new THREE.CylinderGeometry(0.405, 0.405, 0.08, 28, 1, true), mat(0x5a4a2a), 0, 0.67, 0, g).material.side = THREE.DoubleSide;
+  },
+  pilot(grp, mat, part) {
+    const g = grp('head');
+    const leather = mat(0x7a4a2a, { roughness: 0.6 });
+    const cap = part(new THREE.SphereGeometry(0.47, 24, 14, 0, Math.PI * 2, 0, Math.PI / 2), leather, 0, 0.5, -0.02, g);
+    cap.scale.set(1, 0.7, 1);
+    const lens = mat(0x9fe8ff, { metalness: 0.4, roughness: 0.1, emissive: 0x1a4a6a, emissiveIntensity: 0.4 });
+    for (const sx of [-1, 1]) {
+      const rim = part(new THREE.TorusGeometry(0.11, 0.035, 8, 18), mat(0xb8c0cc, { metalness: 0.7, roughness: 0.3 }), sx * 0.15, 0.66, 0.36, g);
+      rim.rotation.x = -0.35;
+      const gl = part(new THREE.CircleGeometry(0.1, 18), lens, sx * 0.15, 0.66, 0.37, g);
+      gl.rotation.x = -0.35;
+    }
+    const b = grp('body');
+    const scarf = mat(0xf2f4f8, { roughness: 0.8 });
+    const ring = part(new THREE.TorusGeometry(0.3, 0.08, 8, 22), scarf, 0, 0.62, 0, b);
+    ring.rotation.x = Math.PI / 2;
+    const tail = part(rbox(0.16, 0.42, 0.05, 0.02), scarf, 0.12, 0.46, -0.3, b);
+    tail.rotation.set(0.4, 0, -0.3);
+  },
+  windup(grp, mat, part) {
+    const b = grp('body');
+    const brass = mat(0xc8a050, { metalness: 0.75, roughness: 0.3 });
+    part(new THREE.CylinderGeometry(0.05, 0.05, 0.3, 10), brass, 0, 0.36, -0.42, b).rotation.x = Math.PI / 2;
+    const spin = new THREE.Group();
+    spin.name = 'spin';
+    spin.position.set(0, 0.36, -0.58);
+    spin.rotation.x = Math.PI / 2;
+    b.add(spin);
+    for (const sx of [-1, 1]) {
+      const loop = part(new THREE.TorusGeometry(0.11, 0.035, 8, 18), brass, sx * 0.13, 0, 0, spin);
+      loop.rotation.x = Math.PI / 2;
+    }
   },
   jet(grp, mat, part) {
     const g = grp('body');
@@ -249,6 +311,8 @@ export class Player {
     this.emote = null;
     this.pos = new THREE.Vector3();
     this.vel = new THREE.Vector3();
+    this.climbOff = new THREE.Vector3();
+    this.climbT = 0;
     this.face = Math.PI;
     this.faceTarget = Math.PI;
     this.grounded = false;
@@ -488,6 +552,8 @@ export class Player {
     this.emote = null;
     this.sy = 1;
     this.sv = 0;
+    this.climbT = 0;
+    this.climbOff.set(0, 0, 0);
     this.root.visible = true;
     this.cur = null;
     this.setAnim('Idle', 0.1);
@@ -498,12 +564,19 @@ export class Player {
     this.events.push({ type, data });
   }
 
+  startClimb(dx, dy, dz) {
+    const k = this.climbT / CLIMB;
+    this.climbOff.multiplyScalar(k * k).add({ x: dx, y: dy, z: dz });
+    this.climbT = CLIMB;
+  }
+
   step(dt, input, world, camYaw) {
     if (this.dead || this.frozen) return;
     const p = this.pos;
     const v = this.vel;
     const R = PHYS.radius;
     const H = PHYS.height;
+    const help = world.help || FULL_HELP;
     const gc = this.ground;
     if (gc && gc.active) {
       let rx = p.x - (gc.x - gc.dx);
@@ -527,7 +600,7 @@ export class Player {
       }
     }
     const mv = input.move();
-    const side = mv.x * (Math.abs(mv.y) > 0.1 ? 0.5 : 0.65);
+    const side = mv.x * (Math.abs(mv.y) > 0.1 ? (this.grounded ? 0.5 : (world.def && world.def.airSide) || 0.5) : 0.65);
     const sy = Math.sin(camYaw);
     const cy = Math.cos(camYaw);
     const wx = -sy * mv.y + cy * side;
@@ -568,6 +641,11 @@ export class Player {
       this.sy = 1.22;
       this.sv = 0;
       this.push('jump');
+      if (gc && gc.swing && gc.active && dt > 0) {
+        v.x += gc.dx / dt;
+        v.z += gc.dz / dt;
+      }
+      if (gc && gc.surface !== 'tramp' && hasInput) this.aimFlush(world, wx, wz);
     }
     let gm = 1;
     if (v.y < 0) gm = PHYS.fallMul;
@@ -580,6 +658,35 @@ export class Player {
     p.x += v.x * dt;
     p.y += v.y * dt;
     p.z += v.z * dt;
+    if (gc && gc.guard && gc.active && !jumped) {
+      const lo = gc.z - gc.hz + 0.15;
+      const hi = gc.z + gc.hz - 0.15;
+      if (gc.open !== -1 && p.z < lo) {
+        p.z = lo;
+        if (v.z < 0) v.z = 0;
+      }
+      if (gc.open !== 1 && p.z > hi) {
+        p.z = hi;
+        if (v.z > 0) v.z = 0;
+      }
+    }
+    if (!gc && v.y <= 0) {
+      for (const c of world.colliders) {
+        if (!c.guard || !c.active) continue;
+        const top = c.y + c.hy;
+        if (prevFeet < top - 0.05 || p.y > top + 0.6 || Math.abs(p.x - c.x) > c.hx) continue;
+        const lo = c.z - c.hz + 0.15;
+        const hi = c.z + c.hz - 0.15;
+        if (c.open !== -1 && p.z < lo && p.z > lo - 1.5) {
+          p.z = lo;
+          if (v.z < 0) v.z = 0;
+        }
+        if (c.open !== 1 && p.z > hi && p.z < hi + 1.5) {
+          p.z = hi;
+          if (v.z > 0) v.z = 0;
+        }
+      }
+    }
     const wasGrounded = this.grounded;
     this.grounded = false;
     let newGround = null;
@@ -615,11 +722,15 @@ export class Player {
             this.push('kill', c);
             return;
           }
-          if (!wasGrounded && v.y <= 2 && c.style !== 'curb' && prevFeet >= top - c.dy - LEDGE && v.x * hit.nx + v.z * hit.nz < -0.5) {
+          if (!wasGrounded && help.ledge > 0 && v.y <= 2 && c.style !== 'curb' && prevFeet >= top - c.dy - help.ledge && v.x * hit.nx + v.z * hit.nz < -0.5) {
             const inward = Math.max(0, R - hit.d + 0.2);
+            const ox = p.x;
+            const oy = p.y;
+            const oz = p.z;
             p.x -= hit.nx * inward;
             p.z -= hit.nz * inward;
             p.y = top;
+            this.startClimb(ox - p.x, oy - p.y, oz - p.z);
             if (v.y < 0) landSpeed = Math.max(landSpeed, -v.y);
             v.y = 0;
             this.grounded = true;
@@ -637,7 +748,7 @@ export class Player {
         }
       }
     }
-    if (!this.grounded && !wasGrounded && v.y < 0 && hasInput) {
+    if (!this.grounded && !wasGrounded && v.y < 0 && hasInput && help.reach > 0) {
       const hs = Math.hypot(v.x, v.z);
       if (hs > 1) {
         const ux = v.x / hs;
@@ -645,13 +756,17 @@ export class Player {
         for (const c of world.colliders) {
           if (!c.active || c.kill || c.style === 'curb') continue;
           const top = c.y + c.hy;
-          if (top <= p.y || top > p.y + LEDGE) continue;
-          const hit = this.circleHit(c, p.x + ux * 0.4, p.z + uz * 0.4, R);
+          if (top <= p.y || top > p.y + help.ledge) continue;
+          const hit = this.circleHit(c, p.x + ux * help.reach, p.z + uz * help.reach, R);
           if (!hit || ux * hit.nx + uz * hit.nz > -0.5) continue;
-          const inward = Math.max(0, R - hit.d + 0.2) + 0.4;
+          const inward = Math.max(0, R - hit.d + 0.2) + help.reach;
+          const ox = p.x;
+          const oy = p.y;
+          const oz = p.z;
           p.x -= hit.nx * inward;
           p.z -= hit.nz * inward;
           p.y = top;
+          this.startClimb(ox - p.x, oy - p.y, oz - p.z);
           landSpeed = Math.max(landSpeed, -v.y);
           v.y = 0;
           this.grounded = true;
@@ -704,9 +819,9 @@ export class Player {
         this.ground = null;
         this.sy = 1.3;
         this.push('pad', g);
-      } else if (g.surface === 'tramp' && !wasGrounded) {
+      } else if (g.surface === 'tramp' && (!wasGrounded || gc !== g)) {
         v.y = Math.max(g.power, landSpeed * 0.75) + (input.jumpHeld ? 2.5 : 0);
-        if (g.target && hasInput && wx * (g.target.x - p.x) + wz * (g.target.z - p.z) > 0) this.aimAt(g.target);
+        if (g.target && (!g.targetCol || g.targetCol.active) && (!hasInput || wx * (g.target.x - p.x) + wz * (g.target.z - p.z) > 0)) this.aimAt(g.target);
         this.launched = true;
         this.grounded = false;
         this.ground = null;
@@ -727,13 +842,28 @@ export class Player {
     }
   }
 
+  aimFlush(world, wx, wz) {
+    const p = this.pos;
+    for (const c of world.colliders) {
+      if (c.surface !== 'tramp' || !c.active || c.shape !== 'cyl') continue;
+      const top = c.y + c.hy;
+      if (top > p.y + 0.1 || top < p.y - 0.4) continue;
+      const dx = c.x - p.x;
+      const dz = c.z - p.z;
+      if (Math.hypot(dx, dz) - c.r > 1.5 || wx * dx + wz * dz <= 0) continue;
+      this.aimAt({ x: c.x, y: top, z: c.z });
+      this.launched = true;
+      return;
+    }
+  }
+
   aimAt(target) {
     const p = this.pos;
     const v = this.vel;
     const up = v.y / PHYS.gravity;
     const drop = Math.max(0.1, (v.y * v.y) / (2 * PHYS.gravity) - (target.y - p.y));
     const tf = up + Math.sqrt((2 * drop) / (PHYS.gravity * PHYS.fallMul));
-    this.aim = { x: (target.x - p.x) / tf, z: (target.z - p.z) / tf };
+    this.aim = { x: (target.x - p.x) / tf, z: (target.z - p.z) / tf, target };
     v.x = this.aim.x;
     v.z = this.aim.z;
     this.padFlight = true;
@@ -794,9 +924,18 @@ export class Player {
     d = Math.atan2(Math.sin(d), Math.cos(d));
     this.face += d * (1 - Math.exp(-14 * dt));
     this.animRate = 1;
+    if (this.climbT > 0) {
+      this.climbT = Math.max(0, this.climbT - dt);
+      if (this.climbT === 0) {
+        this.climbOff.set(0, 0, 0);
+        this.sy = 0.86;
+        this.sv = 0;
+      }
+    }
     if (!this.animOverride) {
       const sp = Math.hypot(this.vel.x, this.vel.z);
       if (this.dead) this.setAnim('Death', 0.1);
+      else if (this.climbT > 0) this.setAnim('Climb', 0.04);
       else if (!this.grounded && this.airTime > 0.06) this.setAnim('Jump', 0.08);
       else if (this.emote) this.setAnim(this.emote, 0.2);
       else if (sp < 0.5) this.setAnim('Idle', 0.2);
@@ -855,6 +994,10 @@ export class Player {
 
   syncVisual() {
     this.root.position.copy(this.pos);
+    if (this.climbT > 0) {
+      const k = this.climbT / CLIMB;
+      this.root.position.addScaledVector(this.climbOff, k * k);
+    }
     this.root.rotation.y = this.face;
   }
 }

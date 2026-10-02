@@ -34,6 +34,8 @@ export function skyMaterial(def) {
       sunDir: { value: new THREE.Vector3(...s.sunDir).normalize() },
       stars: { value: s.stars },
       sunSize: { value: s.sunSize },
+      sunK: { value: s.sunK ?? 1 },
+      curve: { value: s.curve ?? 0.55 },
       time: { value: 0 },
     },
     vertexShader: `
@@ -42,7 +44,7 @@ export function skyMaterial(def) {
     `,
     fragmentShader: `
       uniform vec3 topColor; uniform vec3 horizonColor; uniform vec3 bottomColor; uniform vec3 sunColor; uniform vec3 sunDir;
-      uniform float stars; uniform float sunSize; uniform float time;
+      uniform float stars; uniform float sunSize; uniform float time; uniform float sunK; uniform float curve;
       varying vec3 vDir;
       ${NOISE}
       float hash13(vec3 p3){ p3 = fract(p3 * 0.1031); p3 += dot(p3, p3.zyx + 31.32); return fract((p3.x + p3.y) * p3.z); }
@@ -50,10 +52,10 @@ export function skyMaterial(def) {
         vec3 d = normalize(vDir);
         float h = d.y;
         vec3 col;
-        if (h > 0.0) col = mix(horizonColor, topColor, pow(smoothstep(0.0, 1.0, h), 0.55));
+        if (h > 0.0) col = mix(horizonColor, topColor, pow(smoothstep(0.0, 1.0, h), curve));
         else col = mix(horizonColor, bottomColor, pow(smoothstep(0.0, 0.6, -h), 0.7));
         float s = max(dot(d, sunDir), 0.0);
-        col += sunColor * (pow(s, 1400.0 / sunSize) * 14.0 + pow(s, 180.0 / sunSize) * 1.2 + pow(s, 10.0) * 0.28 + pow(s, 2.5) * 0.1);
+        col += sunColor * (pow(s, 1400.0 / sunSize) * 14.0 + pow(s, 180.0 / sunSize) * 1.2 + pow(s, 10.0) * 0.28 + pow(s, 2.5) * 0.1) * sunK;
         if (stars > 0.0) {
           vec2 sph = vec2(atan(d.z, d.x), asin(clamp(d.y, -1.0, 1.0)));
           float neb = fbm2(sph * vec2(1.6, 2.4) + vec2(3.0, 1.0));
@@ -198,12 +200,13 @@ export function gridMaterial() {
 
 export function beamMaterial(color) {
   return new THREE.ShaderMaterial({
-    uniforms: { color: { value: new THREE.Color(color) }, time: { value: 0 }, strength: { value: 0 } },
-    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+    uniforms: { color: { value: new THREE.Color(color) }, time: { value: 0 }, strength: { value: 0 }, hero: { value: new THREE.Vector4(0, -1e4, 0, 0) } },
+    vertexShader: `varying vec2 vUv; varying vec3 vW; void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
     fragmentShader: `
-      uniform vec3 color; uniform float time; uniform float strength; varying vec2 vUv;
+      uniform vec3 color; uniform float time; uniform float strength; uniform vec4 hero; varying vec2 vUv; varying vec3 vW;
       void main(){
         float a = pow(1.0 - vUv.y, 1.6) * strength;
+        a *= 1.0 - hero.w * (1.0 - smoothstep(0.4, 2.6, abs(vW.y - hero.y - 0.9)));
         float stripes = 0.75 + 0.25 * sin(vUv.y * 30.0 - time * 6.0);
         gl_FragColor = vec4(color * 1.6 * stripes, a * 0.55);
       }
@@ -214,4 +217,88 @@ export function beamMaterial(color) {
     side: THREE.DoubleSide,
     fog: false,
   });
+}
+
+export function portalMaterial(color) {
+  return new THREE.ShaderMaterial({
+    uniforms: { color: { value: new THREE.Color(color) }, time: { value: 0 } },
+    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+    fragmentShader: `
+      uniform vec3 color; uniform float time; varying vec2 vUv;
+      ${NOISE}
+      void main(){
+        vec2 p = vUv - 0.5;
+        float r = length(p) * 2.0;
+        float a = atan(p.y, p.x);
+        float sw = fbm3(vec2(a * 1.6 + r * 4.0 - time * 1.2, r * 3.0 - time * 0.6));
+        float core = smoothstep(1.0, 0.0, r);
+        float v = core * (0.35 + sw * 0.9) + smoothstep(0.75, 0.98, r) * smoothstep(1.0, 0.95, r) * 0.8;
+        gl_FragColor = vec4(mix(color, vec3(1.0), core * 0.35) * (0.6 + v), v * 0.85);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+    fog: false,
+  });
+}
+
+export function canopyMaterial(cols) {
+  return new THREE.ShaderMaterial({
+    uniforms: THREE.UniformsUtils.merge([
+      THREE.UniformsLib.fog,
+      {
+        time: { value: 0 },
+        top: { value: new THREE.Color(cols.top) },
+        shade: { value: new THREE.Color(cols.shade) },
+        glow: { value: new THREE.Color(cols.glow) },
+      },
+    ]),
+    vertexShader: WORLD_VERT,
+    fragmentShader: `
+      #include <common>
+      #include <fog_pars_fragment>
+      uniform float time; uniform vec3 top; uniform vec3 shade; uniform vec3 glow;
+      varying vec3 vW;
+      ${NOISE}
+      void main(){
+        vec2 p = vW.xz * 0.03;
+        vec2 ip = floor(p);
+        vec2 fp = fract(p);
+        float d1 = 8.0;
+        vec2 rel = vec2(0.0);
+        for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+          vec2 o = vec2(float(x), float(y));
+          vec2 h = vec2(hash12(ip + o), hash12(ip + o + 17.3));
+          vec2 r = o + h * 0.8 + 0.1 - fp;
+          float d = dot(r, r);
+          if (d < d1) { d1 = d; rel = r; }
+        }
+        float dome = 1.0 - smoothstep(0.0, 0.62, sqrt(d1));
+        float n = fbm3(vW.xz * 0.12);
+        vec3 col = mix(shade, top, clamp(dome * 0.95 + (n - 0.5) * 0.25, 0.0, 1.0));
+        col += vec3(0.2, 0.45, 0.4) * 0.12 * pow(dome, 3.0) * smoothstep(-0.2, 0.4, -rel.x + rel.y);
+        vec2 g = vW.xz * 0.11;
+        float cell = hash12(floor(g));
+        float sp = smoothstep(0.22, 0.02, length(fract(g) - 0.5 - (vec2(hash12(floor(g) + 3.1), hash12(floor(g) + 7.7)) - 0.5) * 0.2)) * step(0.92, cell);
+        col += glow * sp * (0.75 + 0.25 * sin(time * 0.8 + cell * 40.0)) * 3.0;
+        gl_FragColor = vec4(col, 1.0);
+        #include <fog_fragment>
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }
+    `,
+    fog: true,
+  });
+}
+
+export function nearFade(m, key, r = 3.5) {
+  const prev = m.onBeforeCompile;
+  m.onBeforeCompile = (sh, renderer) => {
+    if (prev) prev(sh, renderer);
+    sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n#ifdef USE_INSTANCING\n { vec3 ipos = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz; transformed *= smoothstep(' + (r * 0.45).toFixed(2) + ', ' + r.toFixed(1) + ', distance(ipos, cameraPosition)); }\n#endif');
+  };
+  m.customProgramCacheKey = () => key + 'NF';
+  return m;
 }

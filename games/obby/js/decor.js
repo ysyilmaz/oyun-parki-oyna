@@ -2,13 +2,24 @@ import * as THREE from 'three';
 import * as TX from './textures.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { jitter, vertexGradient } from './geo.js';
-import { skyMaterial, waterMaterial, lavaMaterial, gridMaterial } from './shaders.js';
+import { skyMaterial, waterMaterial, lavaMaterial, gridMaterial, canopyMaterial, nearFade } from './shaders.js';
 
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
 const _p = new THREE.Vector3();
 const _s = new THREE.Vector3();
 const _e = new THREE.Euler();
+
+function glowVertexMaterial(o, key, k = 2.2) {
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, ...o });
+  m.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <color_fragment>', 'diffuseColor.rgb *= min(vColor.rgb, vec3(1.0));')
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += max(vColor.rgb - 1.0, 0.0) * ' + k.toFixed(2) + ';');
+  };
+  m.customProgramCacheKey = () => key;
+  return m;
+}
 
 function setInst(mesh, i, x, y, z, sx, sy, sz, ry = 0, rx = 0, rz = 0) {
   _p.set(x, y, z);
@@ -21,8 +32,11 @@ function setInst(mesh, i, x, y, z, sx, sy, sz, ry = 0, rx = 0, rz = 0) {
 
 export function buildDecor(world) {
   const def = world.def;
+  const d = def.decor;
   const w = def.id;
-  const g = world.group;
+  const g = new THREE.Group();
+  world.group.add(g);
+  world.decorGroup = g;
   const T = (o) => world.track(o);
   const b = world.course.bounds;
   const rnd = TX.rng(w * 1013 + 5);
@@ -43,10 +57,8 @@ export function buildDecor(world) {
 
   const floorGeo = T(new THREE.PlaneGeometry(4000, 4000, 1, 1));
   floorGeo.rotateX(-Math.PI / 2);
-  let floorM;
-  if (def.below === 'water') floorM = T(waterMaterial());
-  else if (def.below === 'lava') floorM = T(lavaMaterial());
-  else floorM = T(gridMaterial());
+  const BELOW = { water: waterMaterial, lava: lavaMaterial, void: gridMaterial, canopy: () => canopyMaterial(def.belowColors) };
+  const floorM = T(BELOW[def.below]());
   const floor = new THREE.Mesh(floorGeo, floorM);
   floor.position.set(0, def.belowY, (b.minZ + b.maxZ) / 2);
   g.add(floor);
@@ -59,7 +71,7 @@ export function buildDecor(world) {
   });
 
   const islands = [];
-  const islandCount = w === 2 ? 18 : 26;
+  const islandCount = d.islands;
   const solid = world.course.specs.filter((sp) => sp.t === 'block' || sp.t === 'disk');
   const clear = (x, z, s) => solid.every((sp) => Math.hypot(sp.x - x, sp.z - z) > s + 9);
   for (let i = 0, tries = 0; i < islandCount && tries < 400; tries++) {
@@ -75,17 +87,17 @@ export function buildDecor(world) {
   }
   const under = [];
   for (const sp of world.course.specs) {
-    if (sp.t === 'block' && !sp.bare && (sp.style === 'ground' || (w === 3 && sp.style === 'ice')) && !sp.move && !sp.spin) {
+    if (sp.t === 'block' && !sp.bare && d.underStyles.includes(sp.style) && !sp.move && !sp.spin) {
       under.push({ x: sp.x, y: sp.y - (sp.sy || 1) + 0.05, z: sp.z, s: Math.max(sp.sx, sp.sz) * 0.62, d: Math.min(sp.sx, sp.sz) * 0.75 + 1.5 });
     }
     if (sp.t === 'disk' && sp.style === 'arena') under.push({ x: sp.x, y: sp.y - sp.sy + 0.05, z: sp.z, s: sp.r * 0.95, d: sp.r * 0.9 + 1 });
   }
 
   const topGeo = T(new THREE.CylinderGeometry(1, 0.94, 0.5, 18, 1));
-  const topTex = T((w === 1 ? TX.grass() : w === 2 ? TX.stoneTop() : TX.snow()).clone());
+  const topTex = T(TX[d.top]().clone());
   topTex.repeat.set(3, 3);
   topTex.needsUpdate = true;
-  const topM = T(new THREE.MeshStandardMaterial({ map: topTex, color: w === 2 ? 0xb0a0b8 : 0xffffff, roughness: 0.9 }));
+  const topM = T(new THREE.MeshStandardMaterial({ map: topTex, color: d.topTint, roughness: 0.9 }));
   const tops = new THREE.InstancedMesh(topGeo, topM, islands.length);
   tops.receiveShadow = true;
   islands.forEach((il, i) => setInst(tops, i, il.x, il.y, il.z, il.s, 1, il.s, rnd() * 6));
@@ -95,22 +107,19 @@ export function buildDecor(world) {
   coneGeo.rotateX(Math.PI);
   coneGeo.translate(0, -0.5, 0);
   jitter(coneGeo, 0.16, w * 3, true);
-  const uCols = { 1: [0x3a2618, 0x9a6a44], 2: [0xff5a1a, 0x2a2230], 3: [0x5a5cff, 0xcfeeff] }[w];
-  vertexGradient(coneGeo, uCols[0], uCols[1]);
-  const underTex = T(TX.rock(w === 1 ? 'dirt' : w === 2 ? 'basalt' : 'ice').clone());
+  vertexGradient(coneGeo, d.under[0], d.under[1]);
+  const underTex = T(TX.rock(d.underRock).clone());
   underTex.repeat.set(3, 1.5);
   underTex.needsUpdate = true;
-  const underM = T(new THREE.MeshStandardMaterial({ map: underTex, vertexColors: true, roughness: w === 3 ? 0.25 : 0.95, flatShading: true, emissive: w === 3 ? 0x2030a0 : 0x000000, emissiveIntensity: 0.4 }));
+  const underM = T(new THREE.MeshStandardMaterial({ map: underTex, vertexColors: true, roughness: d.underRough, flatShading: true, emissive: d.underGlow, emissiveIntensity: 0.4 }));
   const unders = new THREE.InstancedMesh(coneGeo, underM, islands.length + under.length);
   islands.forEach((il, i) => setInst(unders, i, il.x, il.y - 0.2, il.z, il.s * 0.95, il.s * il.depth, il.s * 0.95, rnd() * 6));
   under.forEach((u, k) => setInst(unders, islands.length + k, u.x, u.y, u.z, u.s, u.d, u.s, rnd() * 6));
   unders.receiveShadow = true;
   g.add(unders);
 
-  if (w === 1) buildTrees(islands);
-  if (w === 1 || w === 2) buildClouds();
-  if (w === 2) buildLavaWorld();
-  if (w === 3) buildSpace();
+  const SETS = { trees: () => buildTrees(islands), clouds: buildClouds, lava: buildLavaWorld, space: buildSpace, grove: buildGrove };
+  for (const k of d.sets) SETS[k]();
 
   function buildTrees(isl) {
     const spots = [];
@@ -154,7 +163,8 @@ export function buildDecor(world) {
   }
 
   function buildClouds() {
-    const n = w === 1 ? 44 : 30;
+    const cl = d.clouds;
+    const n = cl.n;
     const pieces = [];
     for (let i = 0; i < n; i++) {
       const z = R(b.minZ - 150, b.maxZ + 120);
@@ -171,12 +181,12 @@ export function buildDecor(world) {
     const cg = T(new THREE.IcosahedronGeometry(1, 2));
     const cm = T(
       new THREE.MeshStandardMaterial({
-        color: w === 1 ? 0xffffff : 0x5a4450,
-        emissive: w === 1 ? 0xdfefff : 0xff5a2a,
-        emissiveIntensity: w === 1 ? 0.28 : 0.12,
+        color: cl.color,
+        emissive: cl.emissive,
+        emissiveIntensity: cl.glow,
         roughness: 1,
-        transparent: w === 2,
-        opacity: w === 2 ? 0.85 : 1,
+        transparent: cl.opacity < 1,
+        opacity: cl.opacity,
       }),
     );
     const clouds = new THREE.InstancedMesh(cg, cm, pieces.length);
@@ -464,7 +474,238 @@ export function buildDecor(world) {
     });
   }
 
+  function buildGrove() {
+    const trunks = [];
+    for (let i = 0, tries = 0; i < 16 && tries < 300; tries++) {
+      const z = b.maxZ + 20 - (i / 16) * (len + 120) + R(-10, 10);
+      const x = (i % 2 ? 1 : -1) * R(17, 58);
+      const r = R(2.2, 4.4);
+      if (!clear(x, z, r + 6)) continue;
+      const top = yAt(z) + R(18, 34);
+      trunks.push({ x, z, r, base: def.belowY - 2, top });
+      i++;
+    }
+    const tg = T(new THREE.CylinderGeometry(0.72, 1, 1, 14, 6));
+    tg.translate(0, 0.5, 0);
+    jitter(tg, 0.05, 31);
+    vertexGradient(tg, 0x3a3024, 0x9a8470);
+    const barkTex = T(TX.bark().clone());
+    barkTex.repeat.set(3, 10);
+    barkTex.needsUpdate = true;
+    const trunkM = T(new THREE.MeshStandardMaterial({ map: barkTex, vertexColors: true, roughness: 0.95 }));
+    const tm = new THREE.InstancedMesh(tg, trunkM, trunks.length);
+    trunks.forEach((t, i) => setInst(tm, i, t.x, t.base, t.z, t.r, t.top - t.base, t.r, rnd() * 6));
+    tm.receiveShadow = true;
+    g.add(tm);
+
+    const fg = T(new THREE.CylinderGeometry(1, 1, 0.22, 18, 1, false, -Math.PI / 2, Math.PI));
+    const fPos = fg.attributes.position;
+    const fCol = new Float32Array(fPos.count * 3);
+    const bone = new THREE.Color(0xb8a27e);
+    const rimC = new THREE.Color(0xffb070);
+    for (let i = 0; i < fPos.count; i++) {
+      const y = fPos.getY(i);
+      const rr = Math.hypot(fPos.getX(i), fPos.getZ(i));
+      const c = y < -0.05 && rr > 0.75 ? new THREE.Color(1 + rimC.r * 1.4, 1 + rimC.g * 1.4, 1 + rimC.b * 1.4) : bone.clone().multiplyScalar(y < 0 ? 0.5 : 0.62 + 0.14 * Math.cos(rr * 18));
+      fCol[i * 3] = c.r;
+      fCol[i * 3 + 1] = c.g;
+      fCol[i * 3 + 2] = c.b;
+    }
+    fg.setAttribute('color', new THREE.BufferAttribute(fCol, 3));
+    const fm = T(glowVertexMaterial({ roughness: 0.75 }, 'shelfFungus', 1.5));
+    const shelves = [];
+    for (const t of trunks) {
+      const k = 8 + Math.floor(rnd() * 4);
+      for (let j = 0; j < k; j++) {
+        const y = THREE.MathUtils.lerp(t.base + 10, t.top - 2, rnd());
+        const a = rnd() * Math.PI * 2;
+        const f = (y - t.base) / (t.top - t.base);
+        const rr = t.r * (1 - 0.28 * f);
+        const s = R(0.9, 2.1);
+        shelves.push({ x: t.x + Math.cos(a) * rr, y, z: t.z + Math.sin(a) * rr, s, a });
+      }
+    }
+    const sm = new THREE.InstancedMesh(fg, fm, shelves.length);
+    shelves.forEach((sh, i) => setInst(sm, i, sh.x, sh.y, sh.z, sh.s, sh.s * 1.6, sh.s * 0.8, -sh.a + Math.PI / 2));
+    g.add(sm);
+
+    const strandTex = TX.strand();
+    const pg = T(new THREE.PlaneGeometry(1, 1, 1, 4));
+    pg.translate(0, -0.5, 0);
+    const vm = T(new THREE.MeshStandardMaterial({ map: strandTex, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.8, color: 0xb8d8b0 }));
+    const sway = { value: 0 };
+    vm.onBeforeCompile = (sh) => {
+      sh.uniforms.swayT = sway;
+      sh.vertexShader = 'uniform float swayT;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n float sw = -position.y; vec4 ip = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0); transformed.x += sin(swayT * 1.3 + ip.x * 0.3 + ip.z * 0.2) * 0.18 * sw; transformed.z += cos(swayT * 1.1 + ip.z * 0.3) * 0.12 * sw;');
+    };
+    vm.customProgramCacheKey = () => 'vineCurtain';
+    const strands = [];
+    for (const il of [...islands, ...under.map((u) => ({ x: u.x, y: u.y + 0.2, z: u.z, s: u.s }))]) {
+      const k = 3 + Math.floor(rnd() * 4);
+      for (let j = 0; j < k; j++) {
+        const a = rnd() * Math.PI * 2;
+        const r = il.s * R(0.55, 0.9);
+        strands.push({ x: il.x + Math.cos(a) * r, y: il.y - 0.2, z: il.z + Math.sin(a) * r, h: R(2.5, 6), w: R(0.9, 1.8), a });
+      }
+    }
+    for (const t of trunks) {
+      for (let j = 0; j < 4; j++) {
+        const a = rnd() * Math.PI * 2;
+        strands.push({ x: t.x + Math.cos(a) * t.r * 0.9, y: THREE.MathUtils.lerp(t.base + 14, t.top, rnd()), z: t.z + Math.sin(a) * t.r * 0.9, h: R(5, 10), w: R(1.4, 2.4), a });
+      }
+    }
+    const vines = new THREE.InstancedMesh(pg, vm, strands.length);
+    strands.forEach((v, i) => setInst(vines, i, v.x, v.y, v.z, v.w, v.h, 1, v.a));
+    g.add(vines);
+    updaters.push((t) => {
+      sway.value = t;
+    });
+
+    const lp = [[0, -0.32], [0.12, -0.32], [0.07, -0.25], [0.08, 0.06], [0.2, 0.055], [0.3, 0.07], [0.38, 0.1], [0.37, 0.14], [0.32, 0.22], [0.18, 0.3], [0, 0.32]];
+    const mg = T(new THREE.LatheGeometry(lp.map(([x, y]) => new THREE.Vector2(x, y)), 12));
+    mg.translate(0, 0.32, 0);
+    const mPos = mg.attributes.position;
+    const mCol = new Float32Array(mPos.count * 3);
+    const mGlow = new Float32Array(mPos.count);
+    const capC = new THREE.Color(0xcabfa6);
+    const stemC = new THREE.Color(0xcfc4a8);
+    for (let i = 0; i < mPos.count; i++) {
+      const y = mPos.getY(i);
+      const rr = Math.hypot(mPos.getX(i), mPos.getZ(i));
+      const gill = y >= 0.3 && y <= 0.44 && rr > 0.1;
+      const cap = y > 0.44;
+      const c = cap || gill ? capC : stemC;
+      mCol[i * 3] = c.r;
+      mCol[i * 3 + 1] = c.g;
+      mCol[i * 3 + 2] = c.b;
+      mGlow[i] = gill ? 1 : cap ? Math.pow(Math.min(1, rr / 0.38), 3) * 0.15 : 0;
+    }
+    mg.setAttribute('color', new THREE.BufferAttribute(mCol, 3));
+    mg.setAttribute('glow', new THREE.BufferAttribute(mGlow, 1));
+    const gm = T(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 }));
+    gm.onBeforeCompile = (sh) => {
+      sh.vertexShader = 'attribute float glow;\nvarying float vGlow;\nvarying vec3 vTint;\n' + sh.vertexShader.replace('#include <color_vertex>', 'vColor.xyz = color.xyz; vGlow = glow; vTint = vec3(1.0);\n#ifdef USE_INSTANCING_COLOR\n vTint = instanceColor.rgb;\n#endif');
+      sh.fragmentShader = 'varying float vGlow;\nvarying vec3 vTint;\n' + sh.fragmentShader.replace('#include <color_fragment>', 'diffuseColor.rgb *= vColor.rgb;').replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += vTint * vGlow * 2.4;');
+    };
+    nearFade(gm, 'glowShroom3', 9);
+    const spots = [];
+    for (const il of islands) {
+      const n = 2 + Math.floor(il.s / 2.5);
+      for (let k = 0; k < n; k++) {
+        const a = rnd() * Math.PI * 2;
+        const r = rnd() * il.s * 0.7;
+        const cx = il.x + Math.cos(a) * r;
+        const cz = il.z + Math.sin(a) * r;
+        for (let j = 0; j < 3; j++) spots.push({ x: cx + R(-0.6, 0.6), y: il.y + 0.25, z: cz + R(-0.6, 0.6), s: R(0.8, 2.2) });
+      }
+    }
+    const keepOut = [];
+    for (const sp of world.course.specs) {
+      if (sp.t === 'secretcp' || sp.t === 'portal') keepOut.push(sp);
+      if (sp.t === 'portal' && sp.to) keepOut.push(sp.to);
+    }
+    const nearWalk = (x, z, y) => keepOut.some((sp) => Math.hypot(sp.x - x, sp.z - z) < 4 && Math.abs(sp.y - y) < 3);
+    for (const sp of world.course.specs) {
+      if (sp.t === 'block' && sp.style === 'ground' && sp.sx >= 5 && !sp.bare) {
+        const hx = sp.sx / 2 - 0.55;
+        const hz = sp.sz / 2 - 0.55;
+        for (const [cx, cz] of [[sp.x - hx, sp.z - hz], [sp.x + hx, sp.z - hz]]) {
+          if (nearWalk(cx, cz, sp.y)) continue;
+          spots.push({ x: cx, y: sp.y, z: cz, s: 1.1 }, { x: cx + 0.35, y: sp.y, z: cz - 0.3, s: 0.7 }, { x: cx - 0.3, y: sp.y, z: cz - 0.25, s: 0.55 });
+        }
+      }
+    }
+    const shrooms = new THREE.InstancedMesh(mg, gm, spots.length);
+    const tints = [new THREE.Color(0x7affd8), new THREE.Color(0xffc070)];
+    spots.forEach((m, i) => {
+      setInst(shrooms, i, m.x, m.y, m.z, m.s, m.s * R(0.8, 1.3), m.s, rnd() * 6, R(-0.15, 0.15), R(-0.15, 0.15));
+      shrooms.setColorAt(i, tints[rnd() < 0.7 ? 0 : 1]);
+    });
+    shrooms.castShadow = true;
+    shrooms.receiveShadow = true;
+    g.add(shrooms);
+
+    const fn = 400;
+    const FR = 25;
+    const fPos2 = new Float32Array(fn * 3);
+    const fSeed = new Float32Array(fn * 4);
+    const fBlink = new Float32Array(fn * 3);
+    for (let i = 0; i < fn; i++) {
+      fSeed[i * 4] = R(-FR, FR);
+      fSeed[i * 4 + 1] = R(-5, 9);
+      fSeed[i * 4 + 2] = R(-FR, FR);
+      fSeed[i * 4 + 3] = rnd() * 50;
+      fBlink[i * 3] = R(0.6, 0.9);
+      fBlink[i * 3 + 1] = rnd() * 4;
+      fBlink[i * 3 + 2] = R(1.4, 3.4);
+    }
+    const ffg = T(new THREE.BufferGeometry());
+    ffg.setAttribute('position', new THREE.BufferAttribute(fPos2, 3));
+    ffg.setAttribute('blink', new THREE.BufferAttribute(fBlink, 3));
+    const ffm = T(
+      new THREE.ShaderMaterial({
+        uniforms: { time: { value: 0 }, scale: { value: 360 }, map: { value: TX.sprite('glow') }, color: { value: new THREE.Color(0xd8ff9a).multiplyScalar(3) }, cam: { value: new THREE.Vector3() } },
+        vertexShader: `
+          attribute vec3 blink; uniform float time; uniform float scale; uniform vec3 cam; varying float vA;
+          void main(){
+            float c = mod(time + blink.y, blink.z);
+            vA = smoothstep(0.0, 0.08, c) * (1.0 - smoothstep(0.32, 0.4, c)) * smoothstep(5.0, 9.0, distance(position, cam));
+            vec4 mv = modelViewMatrix * vec4(position, 1.0);
+            gl_PointSize = vA < 0.01 ? 0.0 : blink.x * scale / max(-mv.z, 0.5);
+            gl_Position = projectionMatrix * mv;
+          }`,
+        fragmentShader: `
+          uniform sampler2D map; uniform vec3 color; varying float vA;
+          void main(){ float a = texture2D(map, gl_PointCoord).a; gl_FragColor = vec4(color * a * a * vA, 1.0); }`,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      }),
+    );
+    const flies = new THREE.Points(ffg, ffm);
+    flies.frustumCulled = false;
+    const _sz = new THREE.Vector2();
+    flies.onBeforeRender = (r, sc, cam) => {
+      r.getDrawingBufferSize(_sz);
+      ffm.uniforms.scale.value = (_sz.y * 0.5) / Math.tan(THREE.MathUtils.degToRad((cam.fov || 50) * 0.5));
+    };
+    g.add(flies);
+    const wrap = (v) => ((((v + FR) % (2 * FR)) + 2 * FR) % (2 * FR)) - FR;
+    updaters.push((t) => {
+      const c = world.camera ? world.camera.position : _p.set(0, 0, 0);
+      const f = world.focus || c;
+      ffm.uniforms.time.value = t;
+      ffm.uniforms.cam.value.copy(c);
+      for (let i = 0; i < fn; i++) {
+        const s = fSeed[i * 4 + 3];
+        const x = f.x + wrap(fSeed[i * 4] + Math.sin(t * 0.21 + s) * 2.4 - f.x);
+        let y = f.y + fSeed[i * 4 + 1] + Math.sin(t * 0.33 + s * 1.7) * 1.2;
+        const z = f.z + wrap(fSeed[i * 4 + 2] + Math.cos(t * 0.17 + s * 0.6) * 2.4 - f.z);
+        if (world.focus && world.view) {
+          const ax = f.x - c.x;
+          const ay = f.y + 0.9 - c.y;
+          const az = f.z - c.z;
+          const px = x - c.x;
+          const py = y - c.y;
+          const pz = z - c.z;
+          const L2 = ax * ax + ay * ay + az * az;
+          const k = Math.max(0, Math.min(1, (px * ax + py * ay + pz * az) / L2));
+          const ex = px - ax * k;
+          const ey = py - ay * k;
+          const ez = pz - az * k;
+          if (ex * ex + ey * ey + ez * ez < 9) y -= 40;
+        }
+        fPos2[i * 3] = x;
+        fPos2[i * 3 + 1] = y;
+        fPos2[i * 3 + 2] = z;
+      }
+      ffg.attributes.position.needsUpdate = true;
+    });
+
+  }
+
   return {
+    sky,
     update(t, dt) {
       for (const u of updaters) u(t, dt);
     },

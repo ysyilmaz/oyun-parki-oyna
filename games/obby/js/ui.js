@@ -2,11 +2,13 @@ import { WORLDS } from './themes.js';
 import { SKINS, TRAILS } from './save.js';
 
 const $ = (id) => document.getElementById(id);
+const SECRET_ICON = '<svg class="ico sec-ico"><use href="#i-portal"/></svg>';
 
 const ART = {
   1: `<svg viewBox="0 0 180 150" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="w1s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3f95ff"/><stop offset="1" stop-color="#c6ecff"/></linearGradient></defs><rect width="180" height="150" fill="url(#w1s)"/><circle cx="146" cy="30" r="16" fill="#fff6c4"/><ellipse cx="40" cy="36" rx="26" ry="10" fill="#fff"/><ellipse cx="56" cy="30" rx="16" ry="10" fill="#fff"/><path d="M18 88h58l-8 26-21 16-21-16z" fill="#8a5a36"/><rect x="14" y="80" width="66" height="12" rx="6" fill="#56c23a"/><path d="M100 70h64l-9 30-23 18-23-18z" fill="#8a5a36"/><rect x="96" y="62" width="72" height="12" rx="6" fill="#56c23a"/><circle cx="140" cy="46" r="13" fill="#3a9e3a"/><rect x="137" y="52" width="6" height="12" fill="#7a4a2a"/><rect x="60" y="102" width="30" height="10" rx="4" fill="#ffc21a"/></svg>`,
   2: `<svg viewBox="0 0 180 150" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="w2s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a1238"/><stop offset="1" stop-color="#ff7a3a"/></linearGradient></defs><rect width="180" height="150" fill="url(#w2s)"/><path d="M0 116q30-10 60 0t60 0 60 0v34H0z" fill="#ff5a1a"/><path d="M0 124q30-8 60 0t60 0 60 0v26H0z" fill="#ffc23a"/><rect x="28" y="40" width="26" height="80" fill="#6b5f73"/><path d="M24 42l17-24 17 24z" fill="#c8283a"/><rect x="36" y="58" width="10" height="14" rx="5" fill="#ffb040"/><rect x="120" y="54" width="24" height="66" fill="#6b5f73"/><path d="M116 56l16-22 16 22z" fill="#c8283a"/><rect x="127" y="70" width="10" height="13" rx="5" fill="#ffb040"/><rect x="66" y="92" width="44" height="8" rx="4" fill="#ff4a1a"/></svg>`,
   3: `<svg viewBox="0 0 180 150" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="w3s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#05061c"/><stop offset="1" stop-color="#3a2a8a"/></linearGradient></defs><rect width="180" height="150" fill="url(#w3s)"/><circle cx="136" cy="40" r="22" fill="#ff9a5a"/><ellipse cx="136" cy="40" rx="36" ry="7" fill="none" stroke="#ffd28a" stroke-width="3"/><circle cx="20" cy="20" r="1.6" fill="#fff"/><circle cx="60" cy="14" r="1.2" fill="#fff"/><circle cx="90" cy="34" r="1.8" fill="#fff"/><circle cx="36" cy="54" r="1.2" fill="#fff"/><path d="M20 96h60l-10 30-20 12-20-12z" fill="#6a8aff"/><rect x="16" y="88" width="68" height="10" rx="5" fill="#eaf6ff"/><path d="M40 88l6-22 6 22z" fill="#35e0ff"/><path d="M54 88l4-14 4 14z" fill="#ff4fd8"/><rect x="100" y="98" width="56" height="10" rx="5" fill="#1b1f3a" stroke="#35e0ff" stroke-width="3"/></svg>`,
+  4: `<svg viewBox="0 0 180 150" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="w4s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0a2430"/><stop offset="0.75" stop-color="#4a9a8c"/><stop offset="1" stop-color="#2e5a2a"/></linearGradient></defs><rect width="180" height="150" fill="url(#w4s)"/><circle cx="142" cy="28" r="10" fill="#d8fff0" opacity="0.9"/><rect x="14" y="0" width="22" height="150" fill="#3a2a1e"/><rect x="150" y="0" width="18" height="150" fill="#2e2016"/><path d="M36 54q16-6 24 4h-24z" fill="#eadfc6"/><path d="M36 94q12-5 20 3h-20z" fill="#eadfc6"/><path d="M60 10v58M98 10v58" stroke="#4a6a3a" stroke-width="3"/><rect x="54" y="66" width="50" height="9" rx="3" fill="#b88a5a"/><circle cx="60" cy="66" r="3" fill="#7affd8"/><circle cx="98" cy="66" r="3" fill="#7affd8"/><path d="M104 122q22-26 44 0z" fill="#8f6cf0"/><path d="M110 122h32" stroke="#38c8dc" stroke-width="3"/><rect x="122" y="122" width="8" height="28" fill="#eadfc6"/><rect x="20" y="118" width="70" height="12" rx="6" fill="#4a8a5a"/><circle cx="124" cy="40" r="1.6" fill="#ffe8a8"/><circle cx="84" cy="30" r="1.4" fill="#ffe8a8"/><circle cx="46" cy="110" r="1.4" fill="#ffe8a8"/></svg>`,
 };
 
 export class UI {
@@ -87,10 +89,13 @@ export class UI {
   buildWorldCards() {
     const box = $('worldCards');
     box.innerHTML = '';
+    box.classList.toggle('many', WORLDS.length > 3);
     const s = this.g.save;
     WORLDS.forEach((w) => {
       const locked = !this.g.isUnlocked(w.id);
       const stars = s.stars[w.id] || 0;
+      const col = document.createElement('div');
+      col.className = 'world-col';
       const b = document.createElement('button');
       b.className = 'world-card' + (locked ? ' locked' : '') + (this.g.menuWorld === w.id ? ' selected' : '');
       b.innerHTML = `<div class="wc-art">${ART[w.id]}</div><div class="wc-num">${w.id}</div><div class="wc-stars">${[1, 2, 3]
@@ -108,17 +113,81 @@ export class UI {
         this.g.audio.click();
         this.g.selectWorld(w.id);
       });
-      box.appendChild(b);
+      col.appendChild(b);
+      col.appendChild(this.bonusChip(w.id, locked));
+      box.appendChild(col);
     });
+    this.buildStarRoad();
+  }
+
+  selectCard(id) {
+    $('worldCards')
+      .querySelectorAll('.world-card')
+      .forEach((b, i) => b.classList.toggle('selected', WORLDS[i].id === id));
+  }
+
+  bonusChip(id, worldLocked) {
+    const s = this.g.save;
+    const open = !worldLocked && this.g.bonusOpen(id);
+    const done = !!s.bonus[id];
+    const b = document.createElement('button');
+    b.className = 'bonus-chip' + (open ? ' open' : '') + (done ? ' done' : '');
+    b.setAttribute('aria-label', 'Bonus');
+    b.innerHTML = open
+      ? `<svg class="ico"><use href="#i-gift"/></svg><svg class="ico"><use href="#i-coin"/></svg><b>+${done ? 20 : 50}</b>${done ? '<svg class="ico ok"><use href="#i-check"/></svg>' : ''}`
+      : `<svg class="ico"><use href="#i-lock"/></svg><svg class="ico star-ico"><use href="#i-star"/></svg><b>${Math.min(s.stars[id] || 0, 2)}/2</b>`;
+    b.addEventListener('click', () => {
+      this.g.audio.unlock();
+      if (!open) {
+        this.g.audio.nope();
+        b.classList.remove('shake');
+        void b.offsetWidth;
+        b.classList.add('shake');
+        return;
+      }
+      this.g.audio.click();
+      this.g.play(id, 0, true, true);
+    });
+    return b;
+  }
+
+  buildStarRoad() {
+    const box = $('starRoad');
+    if (!box) return;
+    const have = this.starTotal();
+    const goals = SKINS.filter((k) => k.stars).sort((a, b) => a.stars - b.stars);
+    const n = goals.length;
+    const owned = this.g.save.owned.color;
+    let fill = 0;
+    goals.forEach((k, i) => {
+      const from = i ? goals[i - 1].stars : 0;
+      if (have >= k.stars) fill = (i + 1) / n;
+      else if (have > from) fill = Math.max(fill, (i + (have - from) / (k.stars - from)) / n);
+    });
+    const nodes = goals
+      .map((k, i) => {
+        const thumb = this.g.thumbs && this.g.thumbs[k.id];
+        const bg = thumb ? `background:url(${thumb}) center/cover,${k.css}` : `background:${k.css}`;
+        const cls = owned.includes(k.id) ? ' own' : have >= k.stars ? ' ready' : '';
+        return `<div class="road-node${cls}" style="left:${((i + 1) / n) * 100}%"><div class="road-face" style="${bg}"></div><span><svg class="ico"><use href="#i-star"/></svg>${k.stars}</span></div>`;
+      })
+      .join('');
+    box.innerHTML = `<div class="road-count"><svg class="ico"><use href="#i-star"/></svg><b>${have}</b></div><div class="road-track"><i style="width:${fill * 100}%"></i>${nodes}</div>`;
   }
 
   hud(st) {
-    $('hudCoins').textContent = st.coins;
-    $('hudCoinsMax').textContent = '/' + st.coinsMax;
+    const stage = this.stageFly ? this.stageFly - 1 : st.stage;
+    const key = `${st.coins}|${st.coinsMax}|${st.secret}|${st.big}|${st.bigMax}|${stage}|${st.stageMax}`;
+    if (key === this.hudKey) return;
+    this.hudKey = key;
+    $('hudCoins').textContent = Math.max(0, st.coins);
+    $('hudCoinsMax').innerHTML = '/' + st.coinsMax + (st.secret ? '<span class="sec">' + SECRET_ICON + '+' + st.secret + '</span>' : '');
+    if (st.secret > (this.lastSec || 0) && this.lastSec !== undefined) this.pop($('hudCoinsMax').querySelector('.sec'));
+    this.lastSec = st.secret;
     $('starPill').classList.toggle('hidden', !st.bigMax);
     $('hudStars').textContent = st.big;
     $('hudStarsMax').textContent = '/' + st.bigMax;
-    $('stageNum').textContent = st.stage;
+    $('stageNum').textContent = Math.max(1, stage);
     $('stageMax').textContent = st.stageMax;
   }
 
@@ -126,6 +195,7 @@ export class UI {
     const tr = $('towerTrack');
     tr.innerHTML = '';
     this.towerDots = [];
+    this.towerCp = null;
     for (let i = 0; i <= n; i++) {
       const d = document.createElement('div');
       d.className = 'tower-dot' + (i === n ? ' finish' : '');
@@ -137,12 +207,12 @@ export class UI {
   }
 
   tower(frac, cp) {
-    $('towerHead').style.top = (1 - Math.max(0, Math.min(1, frac))) * 100 + '%';
+    const top = Math.round((1 - Math.max(0, Math.min(1, frac))) * 400) / 4;
+    if (top === this.towerTop && cp === this.towerCp) return;
+    this.towerTop = top;
+    this.towerCp = cp;
+    $('towerHead').style.top = top + '%';
     if (this.towerDots) this.towerDots.forEach((d, i) => d.classList.toggle('done', i <= cp));
-  }
-
-  dimCenter(on) {
-    document.querySelector('.hud-center').classList.toggle('dim', on);
   }
 
   starNear(on) {
@@ -164,48 +234,121 @@ export class UI {
     this.pop(document.querySelector('.coin-pill'));
   }
 
+  enqueue(kind, run, ms, drop) {
+    this.q = this.q || [];
+    const same = kind === 'toast' ? this.q.find((it) => it.kind === kind) : null;
+    if (same) same.run = run;
+    else this.q.push({ kind, run, ms, drop });
+    if (!this.qBusy) this.nextQueued();
+  }
+
+  nextQueued() {
+    const it = this.q.shift();
+    this.qBusy = !!it;
+    if (!it) return;
+    it.run();
+    this.qTimer = setTimeout(() => this.nextQueued(), it.ms);
+  }
+
+  clearQueue() {
+    clearTimeout(this.qTimer);
+    const pending = this.q || [];
+    this.q = [];
+    this.qBusy = false;
+    for (const it of pending) if (it.drop) it.drop();
+    if (this.stageFly) {
+      this.stageFly = 0;
+      this.hudKey = null;
+    }
+  }
+
+  flyTo(f, goal, scale, ms) {
+    const r = goal.getBoundingClientRect();
+    const fw = f.offsetWidth;
+    const fh = f.offsetHeight;
+    const k = scale || r.height / fh;
+    const sx = window.innerWidth / 2 - fw / 2;
+    const sy = window.innerHeight * 0.36 - fh / 2;
+    const tx = r.left + r.width / 2 - fw / 2;
+    const ty = r.top + r.height / 2 - fh / 2;
+    return f.animate(
+      [
+        { transform: `translate(${sx}px, ${sy}px) scale(0.5)`, opacity: 1 },
+        { transform: `translate(${sx}px, ${sy - 10}px) scale(0.9)`, opacity: 1, offset: 0.15 },
+        { transform: `translate(${tx}px, ${ty}px) scale(${k})`, opacity: 1, offset: 0.85 },
+        { transform: `translate(${tx}px, ${ty}px) scale(${k})`, opacity: 0 },
+      ],
+      { duration: ms, easing: 'cubic-bezier(.45,0,.35,1)' },
+    );
+  }
+
+  flyCoins(text, done, to) {
+    const run = () => {
+      const f = $('flyCoin');
+      const goal = (to && document.querySelector(to)) || document.querySelector('#hud .coin-pill');
+      f.textContent = text;
+      this.flyTo(f, goal, 0.6, 800).onfinish = () => {
+        if (!to) this.coinPop();
+        if (done) done();
+      };
+    };
+    this.enqueue('coins', run, 800, done);
+  }
+
+  labelRect() {
+    const el = $('stageLabel');
+    if (!el || $('hud').classList.contains('hidden')) return null;
+    const now = performance.now();
+    if (!this.labelAt || now - this.labelAt > 250) {
+      this.labelAt = now;
+      this.labelBox = el.getBoundingClientRect();
+    }
+    return this.labelBox;
+  }
+
   starPop() {
     this.pop($('starPill'));
   }
 
-  toast(text) {
-    const t = $('toast');
-    t.textContent = text;
-    t.classList.remove('show');
-    void t.offsetWidth;
-    t.classList.add('show');
+  toast(text, icon) {
+    this.enqueue('toast', () => {
+      const t = $('toast');
+      t.textContent = text;
+      if (icon) t.insertAdjacentHTML('beforeend', `<svg class="ico toast-ico"><use href="#${icon}"/></svg>`);
+      t.classList.remove('show');
+      void t.offsetWidth;
+      t.classList.add('show');
+    }, 1500);
   }
 
   banner(text) {
-    const b = $('banner');
-    $('bannerText').textContent = text;
-    b.classList.remove('show');
-    void b.offsetWidth;
-    b.classList.add('show');
+    this.clearQueue();
+    this.enqueue('banner', () => {
+      const b = $('banner');
+      $('bannerText').textContent = text;
+      b.classList.remove('show');
+      void b.offsetWidth;
+      b.classList.add('show');
+    }, 1400);
   }
 
   flyStage(n) {
-    const f = $('flyNum');
-    const target = $('stageNum').getBoundingClientRect();
-    f.textContent = n;
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    const sx = w / 2 - 30;
-    const sy = h * 0.4;
-    const tx = target.left + target.width / 2 - 30;
-    const ty = target.top - 20;
-    f.animate(
-      [
-        { transform: `translate(${sx}px, ${sy}px) scale(0.2)`, opacity: 1 },
-        { transform: `translate(${sx}px, ${sy - 30}px) scale(1.5)`, opacity: 1, offset: 0.35 },
-        { transform: `translate(${tx}px, ${ty}px) scale(0.5)`, opacity: 1, offset: 0.9 },
-        { transform: `translate(${tx}px, ${ty}px) scale(0.4)`, opacity: 0 },
-      ],
-      { duration: 900, easing: 'cubic-bezier(.5,0,.3,1)' },
-    ).onfinish = () => {
-      this.pop($('stageNum'));
-      this.pop($('stageLabel'));
-    };
+    this.stageFly = n;
+    this.hudKey = null;
+    this.enqueue('stage', () => {
+      const f = $('flyNum');
+      const num = $('stageNum');
+      f.textContent = n;
+      this.flyTo(f, num, 0, 700).onfinish = () => {
+        if (this.stageFly === n) {
+          this.stageFly = 0;
+          this.hudKey = null;
+          num.textContent = n;
+        }
+        this.pop($('stageNum'));
+        this.pop($('stageLabel'));
+      };
+    }, 700);
   }
 
   hint(touch) {
@@ -219,29 +362,34 @@ export class UI {
     $('hint').style.opacity = 0;
   }
 
-  skip(on) {
+  skip(on, secret = false) {
     $('skipBtn').classList.toggle('hidden', !on);
+    $('skipBtn').querySelector('use').setAttribute('href', secret ? '#i-portal' : '#i-skip');
   }
 
   results(r) {
     $('resTime').textContent = fmt(r.time);
-    $('resCoins').textContent = `${r.coins}/${r.coinsMax}`;
+    $('resCoins').innerHTML = `${r.coins}/${r.coinsMax}` + (r.secret ? SECRET_ICON + '+' + r.secret : '');
     $('resDeaths').textContent = r.deaths;
     $('resRecord').classList.toggle('hidden', !r.record);
     $('resBest').textContent = r.best ? 'En iyi: ' + fmt(r.best) : '';
     $('nextWorldBtn').classList.toggle('hidden', !r.next);
+    if (r.gifts && r.gifts.length) setTimeout(() => this.toast('Yeni kostüm: ' + r.gifts.join(', ')), 1400);
+    $('resStars').classList.toggle('hidden', !!r.bonus);
+    $('resReward').classList.toggle('hidden', !r.bonus);
+    if (r.bonus) {
+      $('resRewardN').textContent = '+' + r.reward;
+      return;
+    }
     $('goalBonusN').textContent = `${r.big}/${r.bigMax}`;
     $('goalParT').textContent = fmt(r.par);
-    ['goalFinish', 'goalBonus', 'goalPar'].forEach((id, i) => $(id).classList.toggle('on', !!r.got[i]));
-    const stars = [...document.querySelectorAll('#resStars .star')];
-    stars.forEach((s) => s.classList.remove('shown', 'on'));
-    stars.forEach((s, i) => {
+    const cols = [...document.querySelectorAll('#resStars .star-col')];
+    cols.forEach((c) => c.classList.remove('shown', 'on', 'miss'));
+    cols.forEach((c, i) => {
+      c.querySelector('.mark use').setAttribute('href', r.got[i] ? '#i-check' : '#i-miss');
       setTimeout(() => {
-        s.classList.add('shown');
-        if (i < r.stars) {
-          s.classList.add('on');
-          this.g.audio.tone(660 * Math.pow(1.26, i), 0.25, { type: 'triangle', vol: 0.15 });
-        }
+        c.classList.add('shown', r.got[i] ? 'on' : 'miss');
+        if (r.got[i]) this.g.audio.tone(660 * Math.pow(1.26, i), 0.25, { type: 'triangle', vol: 0.15 });
       }, 350 + i * 320);
     });
   }
@@ -264,8 +412,9 @@ export class UI {
       b.className = 'item' + (this.shopSel === it.id ? ' sel' : '');
       b.style.animationDelay = i * 0.03 + 's';
       const own = owned.includes(it.id);
-      const locked = !own && it.stars && have < it.stars;
-      const tag = equipped === it.id ? '<span class="tag eq">Seçili</span>' : own ? '<span class="tag">Senin</span>' : locked ? `<span class="price need"><svg class="ico"><use href="#i-star"/></svg>${have}/${it.stars}</span>` : `<span class="price"><svg class="ico"><use href="#i-coin"/></svg>${it.price}</span>`;
+      const hidden = !own && !!it.secret;
+      const locked = hidden || (!own && it.stars && have < it.stars);
+      const tag = equipped === it.id ? '<span class="tag eq">Seçili</span>' : own ? '<span class="tag">Senin</span>' : hidden ? '<span class="price need">Gizli yol</span>' : locked ? `<span class="price need"><svg class="ico"><use href="#i-star"/></svg>${have}/${it.stars}</span>` : `<span class="price"><svg class="ico"><use href="#i-coin"/></svg>${it.price}</span>`;
       if (locked) b.classList.add('locked');
       const thumb = this.shopTab === 'color' && this.g.thumbs && this.g.thumbs[it.id];
       const bg = thumb ? `background:url(${thumb}) center/cover,${it.css}` : `background:${it.css}`;
@@ -293,7 +442,10 @@ export class UI {
       btn.innerHTML = '<span>Seçili</span>';
       btn.disabled = true;
     } else if (own) btn.innerHTML = '<span>Seç</span>';
-    else if (it.stars && this.starTotal() < it.stars) {
+    else if (it.secret) {
+      btn.innerHTML = '<span>Gizli yolda</span>';
+      btn.classList.add('cant');
+    } else if (it.stars && this.starTotal() < it.stars) {
       btn.innerHTML = `<svg class="ico star-ico"><use href="#i-star"/></svg><span>${this.starTotal()}/${it.stars}</span>`;
       btn.classList.add('cant');
     } else {
@@ -312,7 +464,7 @@ export class UI {
     if (!it) return;
     const own = s.owned[this.shopTab].includes(it.id);
     if (!own) {
-      if (s.coins < it.price || (it.stars && this.starTotal() < it.stars)) {
+      if (it.secret || s.coins < it.price || (it.stars && this.starTotal() < it.stars)) {
         this.g.audio.nope();
         const w = document.querySelector('#shop .wallet');
         w.classList.remove('shake');

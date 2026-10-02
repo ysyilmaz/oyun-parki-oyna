@@ -4,7 +4,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { WORLDS } from './themes.js';
+import { WORLDS, worldDef } from './themes.js';
 import { buildCourse, PHYS } from './levels.js';
 import { World } from './world.js';
 import { Player } from './player.js';
@@ -17,12 +17,15 @@ import { loadSave, writeSave, SKINS, TRAILS } from './save.js';
 import { setMaxAnisotropy } from './textures.js';
 
 const FIXED = 1 / 120;
+const CHEST = 15;
+const BONUS_STARS = 2;
 const FINISH_CONFETTI = [0xffc21a, 0xffd84a, 0x22d8ff, 0xff2fc8, 0xffffff];
 const params = parseDebug();
-const hasDebug = Object.keys(params).length > 0;
+const hasDebug = /(^|&)debug=/.test(location.search.slice(1));
 
 const canvas = document.getElementById('scene');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+renderer.info.autoReset = false;
 const DPR = window.devicePixelRatio || 1;
 let pixelRatio = Math.min(DPR, 1.75);
 renderer.setPixelRatio(pixelRatio);
@@ -36,6 +39,12 @@ renderer.debug.checkShaderErrors = false;
 setMaxAnisotropy(renderer.capabilities.getMaxAnisotropy());
 
 const scene = new THREE.Scene();
+scene.onBeforeRender = () => {
+  G.mainStart = renderer.info.render.calls;
+};
+scene.onAfterRender = () => {
+  G.mainEnd = renderer.info.render.calls;
+};
 const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 5000);
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -83,6 +92,8 @@ const G = {
   menuWorld: 1,
   world: null,
   worldId: 0,
+  bonus: false,
+  worldBonus: false,
   course: null,
   def: null,
   player: null,
@@ -110,6 +121,9 @@ const G = {
   lookIdle: 0,
   warm: 0,
   pushT: 0,
+  deathHold: 0.66,
+  hudHold: 0,
+  runId: 0,
 };
 
 function logEvent(type, data) {
@@ -117,7 +131,7 @@ function logEvent(type, data) {
   if (G.events.length > 600) G.events.splice(0, G.events.length - 600);
 }
 
-for (const n of ['jump', 'land', 'coin', 'checkpoint', 'pad', 'boing', 'crack', 'death', 'splash', 'respawn', 'click', 'buy', 'nope', 'win', 'whoosh']) {
+for (const n of ['jump', 'land', 'coin', 'checkpoint', 'pad', 'boing', 'crack', 'creak', 'death', 'splash', 'respawn', 'click', 'buy', 'nope', 'win', 'whoosh']) {
   const f = audio[n].bind(audio);
   audio[n] = (...a) => {
     logEvent('sound', { name: n });
@@ -128,16 +142,24 @@ for (const n of ['jump', 'land', 'coin', 'checkpoint', 'pad', 'boing', 'crack', 
 function parseDebug() {
   const out = {};
   const q = decodeURIComponent(location.search.slice(1));
+  const w = +new URLSearchParams(location.search).get('world');
+  if (w) out.world = w;
   if (!/(^|&)debug=/.test(q)) return out;
   const raw = q.replace(/^.*?debug=/, '');
   for (const tok of raw.split(/[&,]/)) {
-    const [k, v] = tok.split(':');
+    const [k, v] = tok.split(/[:=]/);
     if (k) out[k] = v === undefined ? true : isNaN(+v) ? v : +v;
   }
   return out;
 }
 
-G.isUnlocked = (id) => id === 1 || !!G.save.finished[id - 1] || !!params.unlock;
+const worldIndex = (id) => WORLDS.findIndex((w) => w.id === id);
+const nextWorldId = (id) => (WORLDS[worldIndex(id) + 1] || {}).id || null;
+
+G.isUnlocked = (id) => {
+  const i = worldIndex(id);
+  return i === 0 || (i > 0 && !!G.save.finished[WORLDS[i - 1].id]) || (i > 0 && !!params.unlock);
+};
 
 G.persist = () => {
   writeSave(G.save);
@@ -149,7 +171,7 @@ function persistSoon() {
 }
 
 function storeProgress() {
-  if (!G.world || !['play', 'dead', 'paused'].includes(G.state)) return;
+  if (!G.world || G.bonus || !['play', 'dead', 'paused'].includes(G.state)) return;
   G.save.progress = {
     w: G.worldId,
     cp: G.cp,
@@ -162,7 +184,11 @@ function storeProgress() {
 }
 
 function rimColor() {
-  return G.worldId === 2 ? 0x8fd8ff : 0xbfe4ff;
+  return G.def ? G.def.rim : WORLDS[0].rim;
+}
+
+function rimStrength() {
+  return G.def ? G.def.rimK : WORLDS[0].rimK;
 }
 
 function applyTheme(def) {
@@ -172,8 +198,7 @@ function applyTheme(def) {
   hemi.intensity = def.hemi.intensity;
   sun.color.set(def.light.color);
   sun.intensity = def.light.intensity;
-  sunDir.set(...def.sky.sunDir).normalize();
-  if (def.id === 2) sunDir.set(-0.45, 0.62, -0.3).normalize();
+  sunDir.set(...def.lightDir).normalize();
   renderer.toneMappingExposure = def.exposure;
   bloom.strength = def.bloom.strength;
   bloom.radius = def.bloom.radius;
@@ -181,21 +206,31 @@ function applyTheme(def) {
   scene.environmentIntensity = def.ambient;
   document.body.style.background = def.menuBg;
   audio.startMusic(def.music);
-  if (G.player) G.player.setRim(rimColor(), 0.9);
+  if (G.player) G.player.setRim(rimColor(), rimStrength());
 }
 
-function loadWorld(id) {
-  if (G.world && G.worldId === id) return;
+function loadWorld(id, bonus = false) {
+  if (G.world && G.worldId === id && G.worldBonus === bonus) return;
   if (G.world) G.world.dispose();
-  const def = WORLDS[id - 1];
+  const def = worldDef(id);
   G.def = def;
   G.worldId = id;
-  G.course = buildCourse(id);
+  G.worldBonus = bonus;
+  G.course = buildCourse(id, bonus);
   G.world = new World(scene, def, G.course);
   G.world.camera = camera;
+  G.world.decor.sky.onBeforeRender = () => {
+    if (G.shadowCalls === null) G.shadowCalls = renderer.info.render.calls - G.mainStart;
+  };
   G.cpCols = G.course.cps.map((c) => G.world.colliders.find((k) => k.shape === 'box' && Math.abs(k.x - c.x) < 0.01 && Math.abs(k.z - c.z) < 0.01 && Math.abs(k.y + k.hy - c.y) < 0.01) || null);
-  G.world.events = (type) => {
-    if (type === 'crack') audio.crack();
+  G.world.events = (type, c) => {
+    if (type === 'drop') {
+      if (G.player.ground === c || G.world.time - c.crumble.on < (G.player.ground ? 0.3 : 0.9)) G.cause = { t: G.runTime, at: new THREE.Vector3(c.x, c.y + c.hy, c.z) };
+      return;
+    }
+    if (type !== 'crack') return;
+    audio.crack();
+    if (def.crackPuff) emitDust(c.x, c.y + c.hy, c.z, 8, 1.8, def.crackPuff, 0.45, 1.0);
   };
   applyTheme(def);
   lightShadows();
@@ -208,7 +243,7 @@ G.selectWorld = (id) => {
   G.persist();
   loadWorld(id);
   placeShowcase();
-  G.ui.buildWorldCards();
+  G.ui.selectCard(id);
 };
 
 function placeShowcase() {
@@ -220,6 +255,7 @@ function placeShowcase() {
 
 function showScreen(name) {
   for (const s of ['menu', 'pause', 'results', 'shop', 'loading']) G.ui.show(s, s === name);
+  if (name !== 'none' && name !== 'pause') G.ui.clearQueue();
   const inGame = ['play', 'dead', 'finish', 'paused', 'results'].includes(G.state);
   G.ui.show('hud', inGame && name !== 'results');
   G.ui.show('touch', inGame && input.touchMode && (G.state === 'play' || G.state === 'dead'));
@@ -231,10 +267,12 @@ G.toMenu = () => {
     G.persist();
   }
   G.state = 'menu';
+  G.bonus = false;
   confetti.clear();
   G.ui.skip(false);
-  if (!G.isUnlocked(G.menuWorld)) G.menuWorld = 1;
+  if (!G.isUnlocked(G.menuWorld)) G.menuWorld = WORLDS[0].id;
   loadWorld(G.menuWorld);
+  grantGifts();
   resetRun();
   placeShowcase();
   G.ui.buildWorldCards();
@@ -253,6 +291,16 @@ function resetRun() {
   w.nextCp = 1;
   G.cp = 0;
   G.coinsRun = 0;
+  G.hudHold = 0;
+  G.secretBonus = 0;
+  G.secHold = 0;
+  G.trailPreview = null;
+  G.runId = (G.runId || 0) + 1;
+  G.secret = null;
+  G.midSpawn = null;
+  G.cause = null;
+  G.portal = null;
+  document.getElementById('fade').classList.remove('on');
   G.bigRun = [];
   G.deaths = 0;
   G.runTime = 0;
@@ -260,13 +308,20 @@ function resetRun() {
   G.invuln = 0;
 }
 
-G.play = (id, cpIndex = null, fresh = false) => {
-  if (!G.isUnlocked(id)) id = 1;
+G.bonusOpen = (id) => (G.save.stars[id] || 0) >= BONUS_STARS || !!params.unlock;
+
+G.play = (id, cpIndex = null, fresh = false, bonus = false) => {
+  if (!G.isUnlocked(id)) id = WORLDS[0].id;
+  if (bonus && !G.bonusOpen(id)) bonus = false;
   G.menuWorld = id;
-  loadWorld(id);
+  G.bonus = bonus;
+  loadWorld(id, bonus);
   resetRun();
   const pr = G.save.progress;
-  if (cpIndex === null) {
+  if (bonus) {
+    cpIndex = 0;
+    fresh = false;
+  } else if (cpIndex === null) {
     cpIndex = 0;
     if (!fresh && pr && pr.w === id && pr.cp > 0) {
       cpIndex = pr.cp;
@@ -283,7 +338,7 @@ G.play = (id, cpIndex = null, fresh = false) => {
       G.runTime = pr.time || 0;
     }
   }
-  if (fresh || (pr && pr.w !== id)) G.save.progress = null;
+  if (!bonus && (fresh || (pr && pr.w !== id))) G.save.progress = null;
   cpIndex = Math.max(0, Math.min(cpIndex, G.course.cps.length - 2));
   for (let i = 1; i <= cpIndex; i++) G.world.activateCheckpoint(G.world.cpAt(i), true);
   const opened = G.world.chests.filter((ch) => ch.index <= cpIndex);
@@ -295,7 +350,8 @@ G.play = (id, cpIndex = null, fresh = false) => {
   const p = G.player;
   p.animOverride = null;
   p.frozen = false;
-  p.spawn(c.x, c.y, c.z + (cpIndex === 0 ? 2 : 0), Math.PI);
+  p.spawn(c.x, c.y, c.z + (cpIndex === 0 ? 3.4 : 0), Math.PI);
+  G.world.dockFor(p);
   rig.pitch = 0.36;
   rig.dist = rig.distTarget;
   rig.snap(p.pos, 0);
@@ -303,8 +359,8 @@ G.play = (id, cpIndex = null, fresh = false) => {
   G.state = 'play';
   showScreen('none');
   G.ui.skip(false);
-  G.ui.banner(cpIndex === 0 ? G.def.name : 'Bölüm ' + (cpIndex + 1));
-  G.hintOn = id === 1 && !G.save.learned && !input.touchMode;
+  G.ui.banner(bonus ? 'Bonus' : cpIndex === 0 ? G.def.name : 'Bölüm ' + (cpIndex + 1));
+  G.hintOn = G.def.hint && !bonus && !G.save.learned && !input.touchMode;
   if (G.hintOn) G.ui.hint(false);
   else G.ui.hideHint();
   G.walkT = 0;
@@ -325,9 +381,9 @@ G.action = (a) => {
   audio.click();
   if (a === 'pause') togglePause(true);
   else if (a === 'resume') togglePause(false);
-  else if (a === 'restart') G.play(G.worldId, 0, true);
+  else if (a === 'restart') G.play(G.worldId, 0, true, G.bonus);
   else if (a === 'menu') G.toMenu();
-  else if (a === 'next') G.play(Math.min(3, G.worldId + 1));
+  else if (a === 'next') G.play(nextWorldId(G.worldId) || G.worldId);
   else if (a === 'closeShop') closeShop();
 };
 
@@ -397,22 +453,39 @@ function applySkin() {
 }
 
 G.skipStage = () => {
-  if (G.state !== 'play') return;
-  const next = G.cp + 1;
-  if (next >= G.course.cps.length - 1) return;
+  if (G.state !== 'play' || G.portal) return;
   audio.click();
+  G.ui.skip(false);
+  if (G.secret) {
+    const out = G.world.portals.find((pt) => pt.out);
+    logEvent('skip', { secret: true });
+    enterPortal({ to: out.to, back: true });
+    return;
+  }
+  const next = G.cp + 1;
+  if (next >= G.course.cps.length - (G.bonus ? 1 : 0)) return;
   logEvent('skip', { checkpoint: next });
-  reachCheckpoint(next, true);
   const c = G.course.cps[next];
   G.player.spawn(c.x, c.y, c.z, Math.PI);
+  G.world.dockFor(G.player);
   rig.snap(G.player.pos, rig.yaw);
-  G.ui.skip(false);
+  reachCheckpoint(next, true);
 };
 
+function coinsMax() {
+  return G.course.coins.filter((c) => !c.secret).length + G.course.bigStars.length * 10 + G.course.cps.filter((c) => c.chest).length * CHEST;
+}
+
+function secretCoins() {
+  return G.world.coins.reduce((n, c) => n + (c.secret && c.taken ? 1 : 0), 0);
+}
+
 function updateHud() {
+  const sec = secretCoins();
   G.ui.hud({
-    coins: G.coinsRun,
-    coinsMax: G.course.coins.length,
+    coins: G.coinsRun - G.hudHold - sec,
+    coinsMax: coinsMax(),
+    secret: sec + (G.secretBonus || 0) - (G.secHold || 0),
     time: G.runTime,
     par: G.def.par,
     stage: Math.min(G.cp + 1, G.course.cps.length - 1),
@@ -431,7 +504,7 @@ function emitDust(x, y, z, n, spread, color, size = 0.9, up = 1.2) {
 }
 
 function dustColor() {
-  return G.worldId === 2 ? 0x8a7a80 : G.worldId === 3 ? 0xcfe8ff : 0xf4f0e6;
+  return G.def.dust;
 }
 
 function handlePlayerEvents() {
@@ -448,6 +521,7 @@ function handlePlayerEvents() {
     } else if (e.type === 'land') {
       audio.land(0.5 + e.data);
       emitDust(x, y, z, 12, 3 + e.data * 3, dustColor(), 0.7);
+      G.world.landed(x, y, z);
       logEvent('land', { power: Math.round(e.data * 100) / 100 });
     } else if (e.type === 'step') {
       emitDust(x, y, z, 2, 0.8, dustColor(), 0.4, 0.6);
@@ -467,7 +541,10 @@ function handlePlayerEvents() {
         const a = Math.random() * Math.PI * 2;
         stars.emit(x, y + 0.2, z, Math.cos(a) * 4, 2 + Math.random() * 3, Math.sin(a) * 4, { life: 0.6, size: 0.55, size1: 0.1, color: 0xff8ad8, drag: 3 });
       }
-    } else if (e.type === 'ledge') logEvent('ledge');
+    } else if (e.type === 'ledge') {
+      emitDust(x, y, z, 6, 1.6, dustColor(), 0.5, 0.8);
+      logEvent('ledge');
+    }
     else if (e.type === 'kill') die('hazard');
   }
   p.events.length = 0;
@@ -484,15 +561,21 @@ function die(reason) {
   logEvent('fail', { reason, checkpoint: G.cp, pos: v3(p.pos) });
   if (reason === 'fall') {
     audio.splash();
+    const hit = G.cause && G.runTime - G.cause.t < 2 ? G.cause : null;
+    G.deathHold = hit ? 1.8 : 0.66;
     rig.frozenY = p.groundY + 1.4;
-    rig.watch = p.pos;
+    rig.watch = hit ? hit.at : p.pos;
     G.splashed = false;
     p.animOverride = 'Death';
+    p.setRim(0xffffff, 1.6);
     G.ui.fell();
   } else {
     audio.death();
     p.dead = true;
-    const col = G.worldId === 2 ? 0xff7a1a : G.worldId === 3 ? 0xff4fd8 : 0xff4d5e;
+    p.setRim(0xff3b1a, 2.2);
+    p.sy = 0.62;
+    p.sv = 0;
+    const col = G.def.hurt;
     for (let i = 0; i < 16; i++) {
       const a = Math.random() * Math.PI * 2;
       glow.emit(p.pos.x, p.pos.y + 0.9, p.pos.z, Math.cos(a) * 5, Math.random() * 5, Math.sin(a) * 5, { life: 0.6, size: 0.6, size1: 0.05, color: col, drag: 3 });
@@ -502,14 +585,17 @@ function die(reason) {
 }
 
 function respawn() {
-  const c = G.course.cps[G.cp];
+  const mid = !G.secret && G.midSpawn && G.midSpawn.stage === G.cp ? G.midSpawn : null;
+  const c = G.secret || mid || G.course.cps[G.cp];
   const p = G.player;
+  G.cause = null;
   p.animOverride = null;
   p.spawn(c.x, c.y, c.z, Math.PI);
   rig.frozenY = null;
   rig.snap(p.pos, rig.yaw);
   G.invuln = 1;
   G.state = 'play';
+  G.world.dockFor(p);
   input.jumpQueued = false;
   audio.respawn();
   logEvent('respawn', { checkpoint: G.cp });
@@ -517,20 +603,21 @@ function respawn() {
     const a = (i / 28) * Math.PI * 2;
     stars.emit(c.x + Math.cos(a) * 1.1, c.y + 0.2, c.z + Math.sin(a) * 1.1, Math.cos(a) * 0.4, 3 + Math.random() * 2, Math.sin(a) * 0.4, { life: 0.9, size: 0.5, size1: 0.1, color: 0x9ff4ff, drag: 1.5 });
   }
-  if (G.fails >= 3 && G.world.assistStage !== G.cp) {
+  const diskStage = !G.bonus && G.world.colliders.some((c) => c.stage === G.cp && ((c.shape === 'cyl' && !c.kill) || c.wait));
+  if (G.fails >= (diskStage ? G.def.diskFails : 3) && G.world.assistStage !== G.cp) {
     G.world.setAssist(G.cp);
     logEvent('assist', { stage: G.cp + 1, fails: G.fails });
   }
-  G.ui.skip(G.fails >= 5 && G.cp + 1 < G.course.cps.length - 1);
+  G.ui.skip(G.fails >= 5 && G.cp + 1 < G.course.cps.length - (G.bonus ? 1 : 0), !!G.secret);
 }
 
 function splash(pos) {
-  const col = G.worldId === 2 ? 0xff7a1a : G.worldId === 3 ? 0x9fe8ff : 0x7fd4ff;
-  emitDust(pos.x, pos.y + 0.6, pos.z, 22, 4.2, 0xffffff, 1.3, 3);
+  const col = G.def.splash;
+  emitDust(pos.x, pos.y - 1.6, pos.z, 16, 4.2, 0xffffff, 1, 0.8);
   for (let i = 0; i < 26; i++) {
     const a = Math.random() * Math.PI * 2;
-    const r = 1.5 + Math.random() * 3;
-    glow.emit(pos.x, pos.y + 0.8, pos.z, Math.cos(a) * r, 5 + Math.random() * 5, Math.sin(a) * r, { life: 0.7, size: 0.55, size1: 0.1, color: i % 3 ? col : 0xffffff, drag: 1.5, gravity: 14 });
+    const r = 2 + Math.random() * 3;
+    glow.emit(pos.x + Math.cos(a) * 0.8, pos.y - 1.4, pos.z + Math.sin(a) * 0.8, Math.cos(a) * r, 2 + Math.random() * 3, Math.sin(a) * r, { life: 0.7, size: 0.55, size1: 0.1, color: i % 3 ? col : 0xffffff, drag: 1.5, gravity: 14 });
   }
 }
 
@@ -544,6 +631,7 @@ function reachCheckpoint(i, silent) {
   const c = G.course.cps[i];
   G.cp = i;
   G.fails = 0;
+  G.secret = null;
   w.nextCp = i + 1;
   G.ui.skip(false);
   if (w.assistStage !== null) w.setAssist(null);
@@ -555,7 +643,7 @@ function reachCheckpoint(i, silent) {
   audio.checkpoint();
   logEvent('checkpoint', { index: i, stage: i + 1 });
   confetti.burst(c.x, c.y + 1, c.z, silent ? 40 : 90, 9);
-  const col = G.worldId === 3 ? 0x35e0ff : 0x3ddc5a;
+  const col = G.def.cpColor;
   for (let k = 0; k < 36; k++) {
     const a = (k / 36) * Math.PI * 2;
     stars.emit(c.x + Math.cos(a) * 1.9, c.y + 0.2, c.z + Math.sin(a) * 1.9, Math.cos(a) * 1.5, 4 + Math.random() * 4, Math.sin(a) * 1.5, { life: 1, size: 0.6, size1: 0.1, color: k % 2 ? col : 0xffffff, drag: 1.2 });
@@ -571,12 +659,17 @@ function reachCheckpoint(i, silent) {
 
 function openChest(i) {
   const ch = G.world.openChest(i, false);
-  G.save.coins += 15;
+  G.save.coins += CHEST;
+  G.coinsRun += CHEST;
   audio.setLayer(1);
   audio.buy();
-  G.ui.toast('Hazine +15');
-  G.ui.coinPop();
-  logEvent('reward', { kind: 'chest', value: 15, checkpoint: i });
+  G.ui.toast('Hazine!');
+  G.hudHold += CHEST;
+  const run = G.runId;
+  G.ui.flyCoins('+' + CHEST, () => {
+    if (G.runId === run) G.hudHold = Math.max(0, G.hudHold - CHEST);
+  });
+  logEvent('reward', { kind: 'chest', value: CHEST, checkpoint: i });
   for (let k = 0; k < 40; k++) {
     const a = Math.random() * Math.PI * 2;
     stars.emit(ch.x, ch.y + 1, ch.z, Math.cos(a) * 2.5, 5 + Math.random() * 5, Math.sin(a) * 2.5, { life: 1, size: 0.7, size1: 0.1, color: k % 3 ? 0xffd22e : 0xffffff, drag: 1.5, gravity: 6 });
@@ -597,7 +690,21 @@ function finishRun() {
   G.ui.toast('BİTİŞ!');
   const id = G.worldId;
   const s = G.save;
-  const total = G.course.coins.length;
+  const total = coinsMax();
+  if (G.bonus) {
+    const first = !s.bonus[id];
+    s.bonus[id] = true;
+    s.coins += first ? 50 : 20;
+    const prevB = s.bonusBest[id];
+    const recB = !prevB || G.runTime < prevB;
+    if (recB) s.bonusBest[id] = G.runTime;
+    G.persist();
+    logEvent('reward', { kind: 'bonus', value: first ? 50 : 20 });
+    logEvent('finish', { world: id, bonus: true, time: Math.round(G.runTime * 10) / 10, deaths: G.deaths });
+    G.result = { bonus: true, time: G.runTime, coins: G.coinsRun, coinsMax: total, deaths: G.deaths, record: recB && !!prevB, best: s.bonusBest[id], next: false, reward: first ? 50 : 20 };
+    rig.orbitT = Math.atan2(camera.position.x - p.pos.x, camera.position.z - p.pos.z);
+    return;
+  }
   const bigMax = G.course.bigStars.length;
   const par = G.def.par;
   const got = [true, G.bigRun.length >= bigMax, G.runTime <= par];
@@ -608,14 +715,94 @@ function finishRun() {
   const record = !prevBest || G.runTime < prevBest;
   if (record) s.best[id] = G.runTime;
   s.stars[id] = Math.max(s.stars[id] || 0, st);
-  const unlocked = !s.finished[id] && id < 3;
+  const next = nextWorldId(id);
+  const unlocked = !s.finished[id] && !!next;
   s.finished[id] = true;
   s.progress = null;
   G.persist();
   logEvent('finish', { world: id, time: Math.round(G.runTime * 10) / 10, stars: st, deaths: G.deaths });
-  if (unlocked) logEvent('unlock', { world: id + 1 });
-  G.result = { time: G.runTime, coins: G.coinsRun, coinsMax: total, deaths: G.deaths, stars: st, got, par, record: record && !!prevBest, best: s.best[id], next: id < 3, big: G.bigRun.length, bigMax };
+  if (unlocked) logEvent('unlock', { world: next });
+  const gifts = grantGifts();
+  const sec = secretCoins();
+  G.result = { time: G.runTime, coins: Math.max(0, G.coinsRun - sec), coinsMax: total, secret: sec + (G.secretBonus || 0), deaths: G.deaths, stars: st, got, par, record: record && !!prevBest, best: s.best[id], next: !!next, big: G.bigRun.length, bigMax, gifts };
   rig.orbitT = Math.atan2(camera.position.x - p.pos.x, camera.position.z - p.pos.z);
+}
+
+function starTotal() {
+  return Object.values(G.save.stars).reduce((a, b) => a + (b || 0), 0);
+}
+
+function grantGifts() {
+  const have = starTotal();
+  const owned = G.save.owned.color;
+  const got = SKINS.filter((k) => k.gift && k.stars <= have && !owned.includes(k.id));
+  for (const k of got) {
+    owned.push(k.id);
+    logEvent('unlock', { item: k.id, stars: k.stars });
+  }
+  if (got.length) G.persist();
+  return got.map((k) => k.name);
+}
+
+function enterPortal(pt) {
+  const p = G.player;
+  G.portal = { pt, t: 0, moved: false };
+  p.frozen = true;
+  p.vel.set(0, 0, 0);
+  document.getElementById('fade').classList.add('on');
+  audio.whoosh();
+  if (!pt.back) logEvent('portal', { out: pt.out, checkpoint: G.cp });
+}
+
+function stepPortal(dt) {
+  const g = G.portal;
+  g.t += dt;
+  const p = G.player;
+  if (!g.moved && g.t >= 0.2) {
+    g.moved = true;
+    const to = g.pt.to;
+    p.spawn(to.x, to.y, to.z, Math.PI);
+    G.world.dockFor(p);
+    p.frozen = true;
+    rig.snap(p.pos, 0);
+    if (g.pt.out) {
+      G.secret = null;
+      secretReward();
+    } else if (g.pt.back) G.secret = null;
+    else G.secret = { x: to.x, y: to.y, z: to.z };
+  }
+  if (g.t >= 0.45) {
+    document.getElementById('fade').classList.remove('on');
+    p.frozen = false;
+    G.portal = null;
+    G.invuln = 0.6;
+  }
+}
+
+function secretReward() {
+  const sr = G.def.secret;
+  const s = G.save;
+  if (!sr || s.secrets[G.worldId]) {
+    G.ui.toast('Gizli yol!');
+    return;
+  }
+  s.secrets[G.worldId] = true;
+  if (!s.owned.trail.includes(sr.trail)) s.owned.trail.push(sr.trail);
+  s.coins += sr.coins;
+  G.persist();
+  audio.buy();
+  const tr = TRAILS.find((t) => t.id === sr.trail);
+  G.ui.toast((tr ? tr.name : '') + ' izi! +' + sr.coins, 'i-trail');
+  G.secretBonus = (G.secretBonus || 0) + sr.coins;
+  G.secHold = (G.secHold || 0) + sr.coins;
+  G.trailPreview = { id: sr.trail, t: 4 };
+  const run = G.runId;
+  G.ui.flyCoins('+' + sr.coins, () => {
+    if (G.runId === run) G.secHold = Math.max(0, G.secHold - sr.coins);
+  }, '#hud .coin-pill small .sec');
+  logEvent('reward', { kind: 'secret', trail: sr.trail, value: sr.coins });
+  const p = G.player.pos;
+  confetti.burst(p.x, p.y + 1.5, p.z, 120, 9);
 }
 
 function collect(c, cy, pos, r2max) {
@@ -634,7 +821,21 @@ function checkRules() {
     die('fall');
     return;
   }
+  const gs = p.grounded && p.ground && p.ground.spec;
+  if (gs && gs.spawn && gs.stage === G.cp && !G.secret) G.midSpawn = { x: gs.x, y: gs.y, z: gs.z, stage: gs.stage };
   G.pushT -= FIXED;
+  if (!G.portal) {
+    for (const pt of w.portals) {
+      if (!w.inWindow(pt.view)) continue;
+      const dx = pos.x - pt.x;
+      const dz = pos.z - pt.z;
+      const dy = pos.y - pt.y;
+      if (dx * dx + dz * dz < 1.2 && dy > -0.6 && dy < 2.6) {
+        enterPortal(pt);
+        return;
+      }
+    }
+  }
   for (const b of w.bars) {
     if (!b.push && G.invuln > 0) continue;
     if (pos.y > b.y + b.radius || pos.y + PHYS.height < b.y - b.radius) continue;
@@ -658,6 +859,7 @@ function checkRules() {
       }
     }
   }
+  warnBars(pos);
   const cy = pos.y + 0.9;
   w.coins.forEach((c) => {
     if (c.taken || !collect(c, cy, pos, 1.35)) return;
@@ -675,7 +877,7 @@ function checkRules() {
       const e = Math.random() * 2 - 0.5;
       stars.emit(c.x, c.y, c.z, Math.cos(a) * 3, e * 3, Math.sin(a) * 3, { life: 0.5, size: 0.55, size1: 0.05, color: i % 3 ? 0xffd22e : 0xffffff, drag: 3 });
     }
-    glow.emit(c.x, c.y, c.z, 0, 0.5, 0, { life: 0.35, size: 2.4, size1: 0.2, color: 0xffc21a });
+    glow.emit(c.x, c.y, c.z, 0, 0.5, 0, { life: 0.3, size: 1.4, size1: 0.2, color: 0xffc21a });
     updateHud();
   });
   w.bigStars.forEach((b, i) => {
@@ -707,7 +909,34 @@ function checkRules() {
     const col = G.cpCols[next];
     const r = (col ? Math.max(col.hx, col.hz) : c.r) + PHYS.radius;
     const onTop = p.ground && p.ground === col;
-    if (onTop || (p.grounded && Math.abs(dx) < r && Math.abs(dz) < r && Math.abs(pos.y - c.y) < 0.3)) reachCheckpoint(next);
+    const inside = Math.abs(dx) < r && Math.abs(dz) < r;
+    const over = !c.finish && !p.grounded && inside && pos.y > c.y - 0.3 && pos.y < c.y + 10;
+    const beyond = !c.finish && p.grounded && p.ground && p.ground.stage >= next && !(p.ground.spec && p.ground.spec.side);
+    if (onTop || over || beyond || (p.grounded && inside && Math.abs(pos.y - c.y) < 0.3)) reachCheckpoint(next);
+  }
+}
+
+function warnBars(pos) {
+  const TAU = Math.PI * 2;
+  for (const b of G.world.bars) {
+    if (!b.line) continue;
+    const rx = pos.x - b.x;
+    const rz = pos.z - b.z;
+    if (b.stage !== G.cp || Math.hypot(rx, rz) > b.len + 1.5) {
+      b.warned = false;
+      continue;
+    }
+    const phi = Math.atan2(-rz, rx);
+    let lead = Infinity;
+    for (let k = 0; k < b.arms; k++) {
+      const a = b.angle + (k / b.arms) * TAU;
+      const d = ((((b.speed > 0 ? phi - a : a - phi) % TAU) + TAU) % TAU) / Math.abs(b.speed);
+      lead = Math.min(lead, d);
+    }
+    if (lead < 0.7 && !b.warned) {
+      b.warned = true;
+      audio.creak();
+    } else if (lead > 1.2) b.warned = false;
   }
 }
 
@@ -726,6 +955,12 @@ function pushOff(b, a) {
     }
   }
   G.pushT = 0.6;
+  G.cause = { t: G.runTime, at: new THREE.Vector3(p.pos.x, p.pos.y + 0.6, p.pos.z) };
+  b.flash = 1;
+  for (let i = 0; i < 18; i++) {
+    const a2 = Math.random() * Math.PI * 2;
+    stars.emit(p.pos.x, p.pos.y + 0.9, p.pos.z, Math.cos(a2) * 4, 1 + Math.random() * 3, Math.sin(a2) * 4, { life: 0.9, size: 0.6, size1: 0.1, color: i % 2 ? G.def.hurt : 0xffffff, drag: 2.5 });
+  }
   p.vel.x = dir ? dir[0] * 5 : 0;
   p.vel.z = dir ? dir[1] * 5 : 0;
   p.vel.y = Math.max(p.vel.y, 4);
@@ -737,7 +972,9 @@ function pushOff(b, a) {
 }
 
 function emitTrail(dt) {
-  const id = G.state === 'shop' ? G.preview || G.save.trail : G.save.trail;
+  if (G.trailPreview) G.trailPreview.t -= dt;
+  const pv = G.trailPreview && G.trailPreview.t > 0 ? G.trailPreview.id : null;
+  const id = G.state === 'shop' ? G.preview || G.save.trail : pv || G.save.trail;
   const tr = TRAILS.find((t) => t.id === id);
   if (!tr || tr.id === 'none') return;
   const p = G.player;
@@ -767,10 +1004,33 @@ function emitTrail(dt) {
   }
 }
 
+const _pa = new THREE.Vector3();
+const _pb = new THREE.Vector3();
+
+function markArchesUnderLabel() {
+  const r = G.ui.labelRect();
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  for (const a of G.world.arches || []) {
+    a.label = false;
+    if (!r) continue;
+    _pa.set(a.x - a.half, a.y + 0.75, a.z).project(camera);
+    _pb.set(a.x + a.half, a.y - 0.75, a.z).project(camera);
+    if (_pa.z > 1 || _pb.z > 1) continue;
+    const x0 = ((Math.min(_pa.x, _pb.x) + 1) / 2) * w;
+    const x1 = ((Math.max(_pa.x, _pb.x) + 1) / 2) * w;
+    const y0 = ((1 - Math.max(_pa.y, _pb.y)) / 2) * h;
+    const y1 = ((1 - Math.min(_pa.y, _pb.y)) / 2) * h;
+    a.label = x0 < r.right && x1 > r.left && y0 < r.bottom + 10 && y1 > r.top - 10;
+  }
+}
+
 function autoCamera(dt, look) {
   const moved = Math.abs(look.x) + Math.abs(look.y) > 0.5;
   G.lookIdle = moved ? 0 : G.lookIdle + dt;
   if (G.lookIdle < 1.8) return;
+  const gc = G.player.ground;
+  if (gc && gc.shape === 'cyl' && !gc.power) return;
   const cps = G.course.cps;
   const a = cps[G.cp];
   const b = cps[Math.min(G.cp + 1, cps.length - 1)];
@@ -793,6 +1053,67 @@ function updateHint(dt) {
     G.save.learned = true;
     G.persist();
     logEvent('learned');
+  }
+}
+
+function fixedStep(inp) {
+  G.world.waitFor(G.state === 'play' ? G.player : null, FIXED);
+  G.world.step(FIXED);
+  if (G.state === 'play') {
+    G.player.step(FIXED, inp, G.world, rig.yaw);
+    handlePlayerEvents();
+    if (G.state === 'play') checkRules();
+  }
+}
+
+function stateStep(dt) {
+  const p = G.player;
+  if (G.state === 'play') {
+    G.runTime += dt;
+    updateHint(dt);
+    if (G.portal) stepPortal(dt);
+    if (G.invuln > 0) {
+      G.invuln -= dt;
+      p.setRim(0xffffff, 0.7 + Math.sin(G.invuln * 12) * 0.4);
+      if (G.invuln <= 0) p.setRim(rimColor(), rimStrength());
+    }
+  }
+  if (G.state === 'dead') {
+    G.deathT += dt;
+    const hazard = G.deathReason !== 'fall';
+    if (!hazard && p.root.visible) {
+      p.vel.y = Math.max(-9, p.vel.y - PHYS.gravity * PHYS.fallMul * dt);
+      p.pos.addScaledVector(p.vel, dt);
+      p.vel.x *= Math.exp(-3 * dt);
+      p.vel.z *= Math.exp(-3 * dt);
+      if (G.deathT > 0.36 && !G.splashed) {
+        G.splashed = true;
+        splash(p.pos);
+      }
+    }
+    const t1 = hazard ? 0.38 : G.deathHold;
+    if (G.deathT > t1 && !G.fading) {
+      G.fading = true;
+      document.getElementById('fade').classList.add('on');
+      if (hazard) poof(p.pos);
+      p.root.visible = false;
+    }
+    if (G.deathT > t1 + (hazard ? 0.12 : 0.2)) {
+      G.fading = false;
+      document.getElementById('fade').classList.remove('on');
+      respawn();
+    }
+  }
+  if (G.state === 'finish') {
+    G.finishT += dt;
+    if (G.finishT > 0.8 && G.finishT - dt <= 0.8) confetti.burst(p.pos.x - 2, p.pos.y + 3, p.pos.z, 100, 9, 1, FINISH_CONFETTI);
+    if (G.finishT > 1.6 && G.finishT - dt <= 1.6) confetti.burst(p.pos.x + 2, p.pos.y + 3, p.pos.z, 100, 9, 1, FINISH_CONFETTI);
+    if (G.finishT > 2.8 && G.finishT - dt <= 2.8) {
+      G.state = 'results';
+      p.animOverride = 'ThumbsUp';
+      showScreen('results');
+      G.ui.results(G.result);
+    }
   }
 }
 
@@ -823,68 +1144,17 @@ function frame() {
     acc += dt;
     let n = 0;
     while (acc >= FIXED && n < 14) {
-      G.world.step(FIXED);
-      if (G.state === 'play') {
-        p.step(FIXED, input, G.world, rig.yaw);
-        handlePlayerEvents();
-        if (G.state === 'play') checkRules();
-      }
+      fixedStep(input);
       acc -= FIXED;
       n++;
     }
     if (n >= 14) acc = 0;
   }
-  if (G.state === 'play') {
-    G.runTime += dt;
-    updateHint(dt);
-    if (G.invuln > 0) {
-      G.invuln -= dt;
-      p.setRim(0xffffff, 0.7 + Math.sin(G.invuln * 12) * 0.4);
-      if (G.invuln <= 0) p.setRim(rimColor(), 0.9);
-    }
-  }
-  if (G.state === 'dead') {
-    G.deathT += dt;
-    const hazard = G.deathReason !== 'fall';
-    if (!hazard && p.root.visible) {
-      p.vel.y = Math.max(G.splashed ? -32 : -9, p.vel.y - PHYS.gravity * PHYS.fallMul * dt);
-      p.pos.addScaledVector(p.vel, dt);
-      p.vel.x *= Math.exp(-3 * dt);
-      p.vel.z *= Math.exp(-3 * dt);
-      if (G.deathT > 0.36 && !G.splashed) {
-        G.splashed = true;
-        splash(p.pos);
-      }
-      if (G.deathT > 0.44) p.root.visible = false;
-    }
-    const t1 = hazard ? 0.2 : 0.66;
-    if (G.deathT > t1 && !G.fading) {
-      G.fading = true;
-      document.getElementById('fade').classList.add('on');
-      if (hazard) {
-        poof(p.pos);
-        p.root.visible = false;
-      }
-    }
-    if (G.deathT > t1 + (hazard ? 0.12 : 0.2)) {
-      G.fading = false;
-      document.getElementById('fade').classList.remove('on');
-      respawn();
-    }
-  }
-  if (G.state === 'finish') {
-    G.finishT += dt;
-    if (G.finishT > 0.8 && G.finishT - dt <= 0.8) confetti.burst(p.pos.x - 2, p.pos.y + 3, p.pos.z, 100, 9, 1, FINISH_CONFETTI);
-    if (G.finishT > 1.6 && G.finishT - dt <= 1.6) confetti.burst(p.pos.x + 2, p.pos.y + 3, p.pos.z, 100, 9, 1, FINISH_CONFETTI);
-    if (G.finishT > 2.8 && G.finishT - dt <= 2.8) {
-      G.state = 'results';
-      p.animOverride = 'ThumbsUp';
-      showScreen('results');
-      G.ui.results(G.result);
-    }
-  }
+  stateStep(dt);
   const look = input.takeLook();
+  G.world.setWindow(['menu', 'shop', 'loading'].includes(G.state) ? 0 : G.state === 'finish' || G.state === 'results' ? 'all' : G.cp);
   if (G.state === 'play' || G.state === 'dead') {
+    rig.extraDist = (G.course.meta[G.cp] || {}).camBack || 0;
     rig.applyLook(look, input.touchMode);
     autoCamera(dt, look);
     rig.follow(dt, p, G.world);
@@ -920,14 +1190,18 @@ function frame() {
     const t = Math.max(0, Math.min(1, (a.z - p.pos.z) / span));
     G.ui.tower((G.cp + t) / (cps.length - 1), G.cp);
     G.ui.starNear(G.world.bigStars.some((b) => !b.taken && Math.hypot(b.x - p.pos.x, b.z - p.pos.z) < 22));
-    G.ui.dimCenter((G.world.arches || []).some((a) => Math.hypot(a.x - p.pos.x, a.z - p.pos.z) < 12));
+    markArchesUnderLabel();
   }
   if (G.renderedLast) G.renderCost = rawDt;
   const slowUi = G.state !== 'play' && G.state !== 'dead' && G.renderCost > 0.4;
   G.renderedLast = !slowUi || now - (G.lastRenderAt || 0) > 2000;
   if (G.renderedLast) {
+    renderer.info.reset();
+    G.shadowCalls = null;
     composer.render();
     G.lastRenderAt = now;
+    const calls = renderer.info.render.calls;
+    G.frameInfo = { calls, triangles: renderer.info.render.triangles, shadow: G.shadowCalls, main: G.mainEnd - G.mainStart - (G.shadowCalls || 0), post: calls - G.mainEnd };
   }
   adaptQuality(rawDt);
 }
@@ -1046,6 +1320,29 @@ Object.defineProperty(window, '__game', {
   },
 });
 
+Object.defineProperty(window, '__obby', {
+  get() {
+    const w = G.world;
+    const f = G.frameInfo || { calls: 0, triangles: 0, shadow: null };
+    return Object.freeze({
+      world: G.worldId,
+      checkpoint: G.cp,
+      stats: {
+        calls: f.calls,
+        triangles: f.triangles,
+        shadowCalls: f.shadow,
+        mainCalls: f.main,
+        postCalls: f.post,
+        window: w ? (w.window === 'all' ? 'all' : [w.window - 1, w.window + 4]) : null,
+        stagesVisible: w ? w.stageGroups.filter((g) => g && g.visible).length : 0,
+        stages: w ? w.stageGroups.length : 0,
+        fps: G.fps,
+        tier: G.tier,
+      },
+    });
+  },
+});
+
 Object.defineProperty(window, '__debug', {
   get() {
     const p = G.player;
@@ -1080,6 +1377,7 @@ if (hasDebug) {
     rig,
     teleport(x, y, z) {
       G.player.spawn(x, y, z, Math.PI);
+      G.world.dockFor(G.player);
       rig.snap(G.player.pos, rig.yaw);
     },
     gotoCp(i, dz = 2.5) {
@@ -1087,6 +1385,20 @@ if (hasDebug) {
       this.teleport(c.x, c.y + 0.3, c.z + dz);
     },
     setTier,
+    sim(sec, bot) {
+      const still = { x: 0, y: 0 };
+      const n = Math.round(sec / FIXED);
+      let i = 0;
+      for (; i < n; i++) {
+        const inp = bot(G, rig);
+        if (!inp) break;
+        fixedStep(inp);
+        stateStep(FIXED);
+        if (G.state === 'play' || G.state === 'dead') autoCamera(FIXED, still);
+        if (G.state === 'finish' || G.state === 'results') break;
+      }
+      return i * FIXED;
+    },
   };
 }
 
@@ -1149,9 +1461,10 @@ async function boot() {
   G.player = new Player(scene);
   G.thumbs = makeThumbs();
   applySkin();
-  G.menuWorld = G.isUnlocked(G.save.selected) ? G.save.selected : 1;
-  if (params.world) G.menuWorld = Math.max(1, Math.min(3, params.world));
+  G.menuWorld = G.isUnlocked(G.save.selected) ? G.save.selected : WORLDS[0].id;
+  if (params.world && worldDef(params.world) && G.isUnlocked(params.world)) G.menuWorld = params.world;
   if (params.coins) G.save.coins = params.coins;
+  if (params.stars) G.save.stars = Object.fromEntries(WORLDS.map((w, i) => [w.id, Math.min(3, Math.max(0, params.stars - i * 3))]));
   loadWorld(G.menuWorld);
   G.toMenu();
   logEvent('ready');
@@ -1159,13 +1472,14 @@ async function boot() {
   if (params.shop) {
     G.openShop();
     if (params.tab) document.querySelector(`.tab[data-tab="${params.tab}"]`).click();
-  } else if (params.world && !params.menu) {
-    G.play(G.menuWorld, params.cp || 0, true);
+  } else if (params.world && !params.menu && G.menuWorld === params.world) {
+    G.play(G.menuWorld, Math.max(0, (params.cp || 0) - 1), true, !!params.bonus);
     if (params.finish) {
       const cps = G.course.cps;
       G.cp = cps.length - 2;
       const c = cps[cps.length - 1];
       G.player.spawn(c.x, c.y + 0.2, c.z + 1, Math.PI);
+      G.world.dockFor(G.player);
       G.coinsRun = Math.round(G.course.coins.length * 0.7);
       G.runTime = 142;
     }
