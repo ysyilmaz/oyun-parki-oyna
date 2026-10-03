@@ -1,11 +1,13 @@
 import * as THREE from 'three';
-import { EffectComposer, RenderPass, EffectPass, FXAAEffect, BloomEffect, LUT3DEffect, LookupTexture, ToneMappingEffect, ToneMappingMode } from 'postprocessing';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { WORLDS, worldDef } from './themes.js';
 import { buildCourse, PHYS } from './levels.js';
 import { World } from './world.js';
-import { Player, loadRobot } from './player.js';
-import { loadKit } from './kit.js';
+import { Player } from './player.js';
 import { CameraRig } from './camera.js';
 import { Input } from './input.js';
 import { Sound } from './audio.js';
@@ -15,16 +17,6 @@ import { loadSave, writeSave, SKINS, TRAILS } from './save.js';
 import { setMaxAnisotropy } from './textures.js';
 
 const FIXED = 1 / 120;
-const BLOOM_GAIN = 1.2;
-const BLOOM_THRESHOLD = 0.85;
-const GRADES = {
-  1: { sat: 1.1, shadow: [-0.01, 0.0, 0.03], high: [0.025, 0.012, -0.02], contrast: 0.12 },
-  2: { sat: 1.06, shadow: [0.035, 0.0, -0.02], high: [0.02, 0.0, -0.03], contrast: 0.14 },
-  3: { sat: 1.08, shadow: [0.0, -0.01, 0.045], high: [0.03, 0.0, 0.035], contrast: 0.1 },
-  4: { sat: 1.06, shadow: [-0.01, 0.012, 0.03], high: [0.022, 0.014, -0.016], contrast: 0.1 },
-  5: { sat: 1.04, shadow: [-0.006, 0.0, 0.03], high: [0.012, 0.01, 0.0], contrast: 0.12 },
-  6: { sat: 1.06, shadow: [0.006, -0.006, 0.032], high: [0.03, 0.012, -0.025], contrast: 0.1 },
-};
 const CHEST = 15;
 const BONUS_STARS = 2;
 const FINISH_CONFETTI = [0xffc21a, 0xffd84a, 0x22d8ff, 0xff2fc8, 0xffffff];
@@ -40,7 +32,7 @@ renderer.setPixelRatio(pixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
-renderer.toneMapping = THREE.NoToneMapping;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.debug.checkShaderErrors = false;
@@ -76,54 +68,14 @@ sun.shadow.radius = 3;
 scene.add(sun, sun.target);
 const sunDir = new THREE.Vector3(0.4, 0.7, 0.3).normalize();
 
-const composer = new EffectComposer(renderer, { frameBufferType: THREE.HalfFloatType, multisampling: 0 });
+const rt = new THREE.WebGLRenderTarget(window.innerWidth * pixelRatio, window.innerHeight * pixelRatio, { type: THREE.HalfFloatType, samples: 0 });
+const composer = new EffectComposer(renderer, rt);
+composer.setPixelRatio(pixelRatio);
+composer.setSize(window.innerWidth, window.innerHeight);
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new BloomEffect({ mipmapBlur: true, levels: 5, intensity: 0.5, luminanceThreshold: 0.9, luminanceSmoothing: 0.3, radius: 0.5 });
-const toneMap = new ToneMappingEffect({ mode: ToneMappingMode.ACES_FILMIC });
-const LUTS = {};
-const grade = new LUT3DEffect(gradeLut(1));
-const aa = new FXAAEffect();
-let post = null;
-
-function gradeLut(id) {
-  if (LUTS[id]) return LUTS[id];
-  const lut = LookupTexture.createNeutral(32);
-  const d = lut.image.data;
-  const g = GRADES[id] || GRADES[1];
-  for (let i = 0; i < d.length; i += 4) {
-    let r = d[i];
-    let gr = d[i + 1];
-    let b = d[i + 2];
-    const l = r * 0.2126 + gr * 0.7152 + b * 0.0722;
-    r = l + (r - l) * g.sat;
-    gr = l + (gr - l) * g.sat;
-    b = l + (b - l) * g.sat;
-    const sh = (1 - l) * (1 - l);
-    const hi = l * l;
-    r += g.shadow[0] * sh + g.high[0] * hi;
-    gr += g.shadow[1] * sh + g.high[1] * hi;
-    b += g.shadow[2] * sh + g.high[2] * hi;
-    const c = (x) => {
-      const y = Math.min(1, Math.max(0, x));
-      return y + g.contrast * y * (1 - y) * (y - 0.5) * 2;
-    };
-    d[i] = c(r);
-    d[i + 1] = c(gr);
-    d[i + 2] = c(b);
-  }
-  lut.needsUpdate = true;
-  LUTS[id] = lut;
-  return lut;
-}
-
-function buildPost() {
-  if (post) {
-    composer.removePass(post);
-    post.dispose();
-  }
-  post = G.tier >= 2 ? new EffectPass(camera, toneMap, grade, aa) : new EffectPass(camera, bloom, toneMap, grade, aa);
-  composer.addPass(post);
-}
+const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth / 2, window.innerHeight / 2), 0.5, 0.5, 0.9);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
 
 const glow = new PointPool(scene, 700, { additive: true, sprite: 'glow' });
 const stars = new PointPool(scene, 500, { additive: true, sprite: 'star' });
@@ -248,35 +200,13 @@ function applyTheme(def) {
   sun.intensity = def.light.intensity;
   sunDir.set(...def.lightDir).normalize();
   renderer.toneMappingExposure = def.exposure;
-  bloom.intensity = def.bloom.strength * (def.bloom.gain ?? BLOOM_GAIN);
-  bloom.mipmapBlurPass.radius = 0.55 + def.bloom.radius * 0.5;
-  bloom.luminanceMaterial.threshold = def.bloom.threshold * BLOOM_THRESHOLD;
-  grade.lut = gradeLut(def.id);
+  bloom.strength = def.bloom.strength;
+  bloom.radius = def.bloom.radius;
+  bloom.threshold = def.bloom.threshold;
   scene.environmentIntensity = def.ambient;
   document.body.style.background = def.menuBg;
   audio.startMusic(def.music);
   if (G.player) G.player.setRim(rimColor(), rimStrength());
-}
-
-async function loadAO() {
-  G.ao = {};
-  try {
-    const res = await fetch('assets/ao.json');
-    if (!res.ok) return;
-    const list = await res.json();
-    const loader = new THREE.TextureLoader();
-    await Promise.all(
-      Object.entries(list).map(async ([id, a]) => {
-        const tex = await loader.loadAsync('assets/' + a.file);
-        tex.colorSpace = THREE.NoColorSpace;
-        tex.generateMipmaps = true;
-        tex.anisotropy = 4;
-        G.ao[id] = { tex: { value: tex }, rect: { value: new THREE.Vector4(...a.rect) }, strength: { value: a.strength } };
-      }),
-    );
-  } catch (e) {
-    G.ao = {};
-  }
 }
 
 function loadWorld(id, bonus = false) {
@@ -287,7 +217,7 @@ function loadWorld(id, bonus = false) {
   G.worldId = id;
   G.worldBonus = bonus;
   G.course = buildCourse(id, bonus);
-  G.world = new World(scene, def, G.course, bonus || !G.ao ? null : G.ao[id] || null);
+  G.world = new World(scene, def, G.course);
   G.world.camera = camera;
   G.world.audio = audio;
   G.world.runClock = () => G.runTime;
@@ -1363,6 +1293,10 @@ function setTier(t) {
   logEvent('quality', { tier: t, medianFrameMs: G.medianFrame });
   if (t >= 1) {
     pixelRatio = Math.min(DPR, 1.25);
+    for (const r of [composer.renderTarget1, composer.renderTarget2]) {
+      r.samples = 0;
+      r.dispose();
+    }
     if (sun.shadow.mapSize.x !== 1024) {
       sun.shadow.mapSize.set(1024, 1024);
       if (sun.shadow.map) {
@@ -1371,7 +1305,7 @@ function setTier(t) {
       }
     }
   }
-  buildPost();
+  bloom.enabled = t < 2;
   if (t >= 3) {
     pixelRatio = Math.min(DPR, 1);
     lightShadows();
@@ -1391,6 +1325,7 @@ function resize() {
   const h = window.innerHeight;
   renderer.setPixelRatio(pixelRatio);
   renderer.setSize(w, h);
+  composer.setPixelRatio(pixelRatio);
   composer.setSize(w, h);
   camera.aspect = w / h;
   rig.baseFov = w / h < 1 ? 72 : 62;
@@ -1499,8 +1434,6 @@ if (hasDebug) {
     G,
     renderer,
     bloom,
-    composer,
-    post: { aa, toneMap, grade, EffectPass, camera },
     scene,
     rig,
     teleport(x, y, z) {
@@ -1546,7 +1479,6 @@ function makeThumbs() {
     sc.add(key);
     const pl = new Player(sc);
     pl.blob.visible = false;
-    pl.grounded = true;
     const cam = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
     cam.position.set(1.0, 1.85, 3.3);
     cam.lookAt(0, 1.2, 0);
@@ -1566,7 +1498,6 @@ function makeThumbs() {
 }
 
 async function boot() {
-  buildPost();
   G.ui = new UI(G);
   G.ui.setMuteIcon(G.save.muted);
   audio.setMuted(G.save.muted);
@@ -1588,7 +1519,6 @@ async function boot() {
   resize();
   G.ui.setLoad(1);
   if (params.tier) setTier(params.tier);
-  await Promise.all([loadRobot(), loadKit(), loadAO()]);
   G.player = new Player(scene);
   G.thumbs = makeThumbs();
   applySkin();
