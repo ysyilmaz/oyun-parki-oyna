@@ -1,7 +1,12 @@
 import * as THREE from 'three';
+import { makeWind } from './wind.js';
+import { STORM_LOOK } from './storm.js';
+import { makeRhythm } from './rhythm.js';
+import { makeTrain } from './train.js';
+import { CLOCK_LOOK } from './clockwork.js';
 import { blockGeo, diskGeo, vertexGradient } from './geo.js';
 import * as TX from './textures.js';
-import { lavaMaterial, beamMaterial, portalMaterial, nearFade } from './shaders.js';
+import { lavaMaterial, beamMaterial, portalMaterial, nearFade, nearDim, glowColor } from './shaders.js';
 import { buildDecor } from './decor.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { FULL_HELP, PHYS, SWING_REACH, holdWait, swingFar, swingWait } from './levels.js';
@@ -12,6 +17,7 @@ const ARCH_H = 6.9;
 const VINE_N = 7;
 const SECRET_VIEW = 1000;
 const FINISH_STAGES = 9;
+const RESULT_STAGES = 2;
 const PORTAL = 0xc8ff4a;
 const MUSHROOM = 0x8f6cf0;
 const _mm = new THREE.Matrix4();
@@ -26,7 +32,12 @@ const _vb = new THREE.Vector3();
 const _vd = new THREE.Vector3();
 const GO = new THREE.Color(0x3ddc5a);
 
-const LOOKS = {
+function oneGroup(g) {
+  g.clearGroups();
+  return g;
+}
+
+export const LOOKS = {
   meadow: {
     groundCap: true,
     band: false,
@@ -60,9 +71,10 @@ const LOOKS = {
     groundCap: false,
     band: false,
     mushrooms: false,
-    bar: { color: 0xff4a1a, emissive: 0xff4a1a, glow: 2.4, tip: 1.2 },
+    bar: { color: 0xff4a1a, emissive: 0xff4a1a, glow: 2.4, tip: 1.2, tipColor: 0xffffff, flash: 1 },
     conveyor: { color: 0xff7a1a, glow: 1.8 },
     gate: ['#ffffff', '#ff4d5e'],
+    curb: ['#ffffff', '#ff4d5e'],
     mats: (H) => ({
       groundTop: H.stoneTop,
       groundSide: H.brick,
@@ -89,9 +101,10 @@ const LOOKS = {
     groundCap: false,
     band: true,
     mushrooms: false,
-    bar: { color: 0xff4fd8, emissive: 0xff4fd8, glow: 2.4, tip: 1.2 },
+    bar: { color: 0xff4fd8, emissive: 0xff4fd8, glow: 2.4, tip: 1.2, tipColor: 0xffffff, flash: 1 },
     conveyor: { color: 0x35e0ff, glow: 1.8 },
     gate: ['#ffffff', '#ff4d5e'],
+    curb: ['#ffffff', '#ff4d5e'],
     mats: (H) => ({
       groundTop: H.snow,
       groundSide: H.iceRock,
@@ -125,6 +138,7 @@ const LOOKS = {
     strip: 0.3,
     lip: 0x7affd8,
     barkCurb: true,
+    portalRing: (w) => w.std({ map: TX.bark(), color: 0xb89a78, roughness: 0.85 }),
     mats: (H) => ({
       groundTop: H.moss,
       groundSide: H.bark,
@@ -148,6 +162,8 @@ const LOOKS = {
       pillarTop: H.wood,
     }),
   },
+  storm: STORM_LOOK,
+  clock: CLOCK_LOOK,
 };
 
 export class World {
@@ -199,6 +215,9 @@ export class World {
     this.beamFinish = new THREE.Color(0xfff2cc);
     this.buildCourse();
     this.buildCoins();
+    this.wind = makeWind(this);
+    this.rhythm = makeRhythm(this);
+    this.train = makeTrain(this);
     this.decor = buildDecor(this);
     this.setWindow(0);
   }
@@ -229,6 +248,7 @@ export class World {
 
   inWindow(view) {
     if (this.window === 'all') return view < SECRET_VIEW && view > this.lastStage - FINISH_STAGES;
+    if (this.window === 'end') return view < SECRET_VIEW && view > this.lastStage - RESULT_STAGES;
     if (view >= SECRET_VIEW) return this.window === view - SECRET_VIEW;
     return view >= this.window - 1 && view <= this.window + 4;
   }
@@ -312,7 +332,7 @@ export class World {
           m = pick(L.groundSide(), L.blockTop());
           break;
         }
-        const rc = this.def.rail || ['#ffffff', '#ff4d5e'];
+        const rc = this.look.curb || this.def.rail || ['#ffffff', '#ff4d5e'];
         const cm = this.mat('candyRed', () => S({ map: TX.candy(rc[0], rc[1]), roughness: 0.5 }));
         m = pick(cm, cm);
         break;
@@ -413,6 +433,9 @@ export class World {
       leaf: () => this.mat('leaf', () => S({ map: TX.leaf(), roughness: 0.55 })),
       puff: () => this.mat('puff', () => S({ map: TX.puff(), color: 0xbfb39a, roughness: 0.9, emissiveMap: TX.crackGlow(), emissive: 0x8a3020, emissiveIntensity: 0.6 })),
       puffWarn: () => this.mat('puffWarn', () => S({ map: TX.puff(), color: 0xb89a90, roughness: 0.9, emissiveMap: TX.crackGlow(), emissive: 0xff3020, emissiveIntensity: 2.2 })),
+      tint,
+      std: (key, o) => this.mat(key, () => S(o)),
+      woodMap: () => TX.wood(),
     };
     this.lookCache = LOOKS[this.def.look].mats(H);
     return this.lookCache;
@@ -504,6 +527,7 @@ export class World {
     else if (s.t === 'finish') this.addCheckpoint(s, true);
     else if (s.t === 'start') this.addArch(s.x, s.y, s.z - 1.4, 'BAŞLA', false);
     else if (s.t === 'bigstar') this.addBigStar(s);
+    else if (s.t === 'takeoff') this.addTakeoff(s);
     else if (s.t === 'chest') this.addChest(s);
     else if (s.t === 'rail') this.addRail(s);
     else if (s.t === 'portal') this.addPortal(s);
@@ -813,20 +837,94 @@ export class World {
         t.userData.trampUv = true;
       }
       const legM = this.mat('trampLeg', () => this.std({ color: 0x3a3f4f, roughness: 0.4, metalness: 0.6 }));
-      const legG = this.track(new THREE.CylinderGeometry(0.12, 0.12, 1.4, 8));
-      for (let k = 0; k < 4; k++) {
-        const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
-        const leg = this.addMesh(legG, legM);
-        leg.position.set(Math.cos(a) * s.r * 0.75, -0.9, Math.sin(a) * s.r * 0.75);
-        obj.add(leg);
-      }
+      const legG = this.mat('trampLegs' + s.r.toFixed(2), () => {
+        const legs = [];
+        for (let k = 0; k < 4; k++) {
+          const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
+          legs.push(new THREE.CylinderGeometry(0.12, 0.12, 1.4, 8).translate(Math.cos(a) * s.r * 0.75, -0.9, Math.sin(a) * s.r * 0.75));
+        }
+        const m = mergeGeometries(legs, false);
+        for (const l of legs) l.dispose();
+        return m;
+      });
+      obj.add(this.addMesh(legG, legM));
     }
     obj.add(mesh);
+    if (s.style === 'spinner' && s.spin && this.look.spinArrows) obj.add(this.spinArrows(s));
     if (this.isStatic(s)) this.statics.add(mesh);
     this.group.add(obj);
     const c = { shape: 'cyl', x: s.x, y: cy, z: s.z, r: s.r, hy: s.sy / 2, yaw: 0 };
     if (s.style === 'tramp') c.meshY = mesh;
     return this.addCollider(c, s, obj);
+  }
+
+  poleKnobGeo() {
+    const paint = (g, hex) => {
+      const c = new THREE.Color(hex);
+      const col = new Float32Array(g.attributes.position.count * 3);
+      for (let i = 0; i < col.length; i += 3) col.set([c.r, c.g, c.b], i);
+      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      return g;
+    };
+    const pole = paint(new THREE.CylinderGeometry(0.09, 0.11, 3.6, 10).translate(0, 1.8, 0), 0xf2f4f8);
+    const knob = paint(new THREE.SphereGeometry(0.2, 12, 10).translate(0, 3.65, 0), 0xffc21a);
+    const m = mergeGeometries([pole, knob], false);
+    pole.dispose();
+    knob.dispose();
+    return m;
+  }
+
+  poleKnobMat() {
+    const m = this.std({ color: 0xffffff, vertexColors: true, roughness: 0.3, metalness: 0.55 });
+    const glow = new THREE.Color(0xffa000).multiplyScalar(0.6);
+    m.onBeforeCompile = (sh) => {
+      sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+ totalEmissiveRadiance += vec3(${glow.r.toFixed(4)}, ${glow.g.toFixed(4)}, ${glow.b.toFixed(4)}) * step(vColor.b, 0.5);`);
+    };
+    m.customProgramCacheKey = () => 'poleKnob';
+    return m;
+  }
+
+  padNear(x, y, z) {
+    if (!this.def.padJump) return null;
+    for (const c of this.colliders) {
+      if (c.surface !== 'pad' || !c.active) continue;
+      if (Math.abs(x - c.x) < c.hx + 0.9 && Math.abs(z - c.z) < c.hz + 0.9 && Math.abs(y - (c.y + c.hy)) < 0.5) return c;
+    }
+    return null;
+  }
+
+  spinArrows(s) {
+    const g = this.mat('spinArrowGeo' + s.r.toFixed(2), () => {
+      const parts = [];
+      const r0 = s.r * 0.66;
+      const r1 = s.r * 0.84;
+      for (let k = 0; k < 3; k++) {
+        const a0 = (k / 3) * Math.PI * 2;
+        const a1 = a0 + 1.1;
+        const sh = new THREE.Shape();
+        sh.absarc(0, 0, r1, a0, a1, false);
+        const rm = (r0 + r1) / 2;
+        const w = (r1 - r0) * 1.1;
+        sh.lineTo(Math.cos(a1) * (r1 + w * 0.45), Math.sin(a1) * (r1 + w * 0.45));
+        sh.lineTo(Math.cos(a1 + 0.42) * rm, Math.sin(a1 + 0.42) * rm);
+        sh.lineTo(Math.cos(a1) * (r0 - w * 0.45), Math.sin(a1) * (r0 - w * 0.45));
+        sh.absarc(0, 0, r0, a1, a0, true);
+        sh.closePath();
+        const sg = new THREE.ShapeGeometry(sh, 10);
+        parts.push(sg.index ? sg.toNonIndexed() : sg);
+      }
+      const m = mergeGeometries(parts, false).rotateX(-Math.PI / 2);
+      for (const p of parts) p.dispose();
+      return m;
+    });
+    const c = new THREE.Color(this.paletteColor(s.color));
+    const dark = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b < 0.3;
+    const am = this.mat('spinArrow' + (dark ? 'L' : 'D'), () => new THREE.MeshBasicMaterial({ color: dark ? 0xf1e9d6 : 0x2a52c8, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }));
+    const m = new THREE.Mesh(g, am);
+    m.position.y = s.sy / 2 + 0.012;
+    if (s.spin < 0) m.scale.x = -1;
+    return m;
   }
 
   addBar(s) {
@@ -849,7 +947,8 @@ export class World {
     const tg = this.track(f.bark ? new THREE.CylinderGeometry(s.radius * 1.01, s.radius * 1.01, 0.08, 16, 1).rotateZ(Math.PI / 2) : new THREE.SphereGeometry(s.radius * 1.35, 16, 12));
     const lw = f.lineW || 0.7;
     const lg = f.line ? this.mat('barLineGeo' + s.len + '|' + lw, () => new THREE.PlaneGeometry(s.len, lw).rotateX(-Math.PI / 2).translate(s.len / 2, 0, 0)) : null;
-    const lm = f.line ? this.mat('barLine', () => (f.lineW ? new THREE.MeshBasicMaterial({ color: f.line, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }) : new THREE.MeshBasicMaterial({ color: f.line, transparent: true, opacity: 0.55, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }))) : null;
+    const near = (mm, key) => (f.near ? nearDim(mm, key, f.near[0], f.near[1]) : mm);
+    const lm = f.line ? this.mat('barLine', () => near(f.lineW ? new THREE.MeshBasicMaterial({ color: f.line, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }) : new THREE.MeshBasicMaterial({ color: glowColor(f.line, f.lineGlow), transparent: true, opacity: 0.55, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }), 'barLine')) : null;
     const eg = f.edge ? this.track(new THREE.CylinderGeometry(s.radius * 1.08, s.radius * 1.08, 0.16, 16, 1).rotateZ(Math.PI / 2)) : null;
     const em = f.edge ? this.mat('barEdge', () => this.std({ color: f.edge, roughness: 0.7 })) : null;
     for (let k = 0; k < s.arms; k++) {
@@ -899,18 +998,15 @@ export class World {
     g.add(pad);
     const cp = { index: s.index, x: s.x, y: s.y, z: s.z, group: g, padTop, active: s.index === 0, finish, pop: 0, flag: null, beam: null };
     if (!finish) {
-      const poleM = this.mat('pole', () => this.std({ color: 0xf2f4f8, roughness: 0.3, metalness: 0.6 }));
-      const pole = this.addMesh(this.mat('poleGeo', () => new THREE.CylinderGeometry(0.09, 0.11, 3.6, 10)), poleM);
       const side = (this.course.cps[s.index] && this.course.cps[s.index].r) || 3.2;
-      pole.position.set(side - 0.7, 1.8, side - 0.7);
-      const knob = this.addMesh(this.mat('knobGeo', () => new THREE.SphereGeometry(0.2, 12, 10)), this.mat('knob', () => this.std({ color: 0xffc21a, emissive: 0xffa000, emissiveIntensity: 0.6, metalness: 0.5, roughness: 0.3 })));
-      knob.position.set(side - 0.7, 3.65, side - 0.7);
-      this.statics.add(pole).add(knob);
+      const pole = this.addMesh(this.mat('poleKnobGeo', () => this.poleKnobGeo()), this.mat('poleKnob', () => this.poleKnobMat()));
+      pole.position.set(side - 0.7, 0, side - 0.7);
+      this.statics.add(pole);
       const flagGeo = this.track(new THREE.PlaneGeometry(1.7, 1.05, 12, 4));
       flagGeo.translate(0.85, 0, 0);
       const texOff = this.track(TX.flag(s.index + 1, false));
       const texOn = this.track(TX.flag(s.index + 1, true, this.def.flagOn));
-      const flagM = this.track(this.std({ map: texOff, side: THREE.DoubleSide, roughness: 0.7 }));
+      const flagM = this.track(this.std({ map: texOff, side: THREE.DoubleSide, roughness: 0.7, forceSinglePass: true }));
       flagM.onBeforeCompile = (sh) => {
         sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#ifdef FLIP_SIDED
 bool flagFront = !gl_FrontFacing;
@@ -925,7 +1021,7 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
       flag.position.set(side - 0.7, 2.95, side - 0.7);
       flag.rotation.y = Math.PI / 4 + Math.PI;
       flag.userData.base = Float32Array.from(flagGeo.attributes.position.array);
-      g.add(pole, knob, flag);
+      g.add(pole, flag);
       cp.flag = flag;
       cp.flagC = new THREE.Vector3(s.x + side - 0.7 - 0.6, s.y + 2.95, s.z + side - 0.7 + 0.6);
       cp.flagA = 1;
@@ -968,7 +1064,7 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
     const g = new THREE.Group();
     g.position.set(s.x, s.y, s.z);
     g.rotation.y = s.yaw || 0;
-    const ringM = this.mat('portalRing', () => this.std({ map: TX.bark(), color: 0xb89a78, roughness: 0.85 }));
+    const ringM = this.mat('portalRing', () => (this.look.portalRing ? this.look.portalRing(this) : this.std({ map: TX.bark(), color: 0xb89a78, roughness: 0.85 })));
     const ring = this.addMesh(this.mat('portalRingGeo', () => new THREE.TorusGeometry(1.25, 0.2, 10, 36)), ringM);
     ring.position.y = 1.45;
     this.statics.add(ring);
@@ -1239,6 +1335,33 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
     return this.cps.find((c) => c.index === i);
   }
 
+  addTakeoff(s) {
+    const geo = this.mat('takeoffGeo', () => {
+      const parts = [0, 0.75].map((o) => {
+        const sh = new THREE.Shape();
+        sh.moveTo(-0.3 + o, -0.55);
+        sh.lineTo(0.2 + o, 0);
+        sh.lineTo(-0.3 + o, 0.55);
+        sh.lineTo(-0.05 + o, 0.55);
+        sh.lineTo(0.45 + o, 0);
+        sh.lineTo(-0.05 + o, -0.55);
+        sh.closePath();
+        const g = new THREE.ShapeGeometry(sh);
+        g.deleteAttribute('uv');
+        return g;
+      });
+      const m = mergeGeometries(parts, false).rotateX(-Math.PI / 2);
+      for (const g of parts) g.dispose();
+      return m;
+    });
+    const mat = this.mat('takeoffMat', () => new THREE.MeshBasicMaterial({ color: 0xd0208e, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }));
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(s.x, s.y + 0.03, s.z);
+    m.rotation.y = s.dir > 0 ? 0 : Math.PI;
+    m.scale.setScalar(0.8);
+    this.group.add(m);
+  }
+
   addBigStar(s) {
     const g = new THREE.Group();
     const star = this.makeStar(0xff5ad8);
@@ -1388,19 +1511,22 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
       const p = this.addMesh(blockGeo(0.9, H, 0.9, 0.3, 1), pm);
       p.position.set(x + sx, y + H / 2, z);
       this.group.add(p);
-      const cap = this.addMesh(diskGeo(0.7, 0.5, 0.2), [cm, cm]);
+      const cap = this.addMesh(this.mat('archCapGeo', () => oneGroup(diskGeo(0.7, 0.5, 0.2).clone())), cm);
       cap.position.set(x + sx, y + H + 0.2, z);
       this.group.add(cap);
       this.colliders.push({ shape: 'box', x: x + sx, y: y + H / 2, z, hx: 0.45, hy: H / 2, hz: 0.45, yaw: 0, dx: 0, dy: 0, dz: 0, dyaw: 0, active: true, surface: null, kill: false, power: 0 });
     }
     const bgeo = this.track(new THREE.BoxGeometry(span * 2 - 0.9, 1.5, 0.35));
+    bgeo.clearGroups();
+    bgeo.addGroup(0, 24, 0);
+    bgeo.addGroup(24, 12, 4);
     const fadeEdge = this.track(edgeM.clone());
     for (const m of [fadeEdge, bannerM]) m.transparent = true;
     const banner = new THREE.Mesh(bgeo, [fadeEdge, fadeEdge, fadeEdge, fadeEdge, bannerM, bannerM]);
     banner.castShadow = true;
     banner.position.set(x, y + H - 0.7, z);
     this.group.add(banner);
-    const arch = { x, y: y + H - 0.7, z, half: span, banner, mats: [fadeEdge, bannerM], a: 1, pmats: [pm, cm], pa: 1 };
+    const arch = { x, y: y + H - 0.7, z, half: span, finish, banner, mats: [fadeEdge, bannerM], a: 1, pmats: [pm, cm], pa: 1 };
     this.arches = this.arches || [];
     this.arches.push(arch);
   }
@@ -1576,6 +1702,7 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
   }
 
   waitFor(p, dt) {
+    this.player = p;
     if (!p) {
       this.waiting.clear();
       this.holding.clear();
@@ -1615,6 +1742,8 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
   dockFor(p) {
     this.waitFor(p, 1e3);
     for (const c of this.holding) c.ph += holdWait(c.wait, c.ph, 1e3);
+    if (this.rhythm) this.rhythm.dock(p);
+    if (this.train) this.train.dock(p);
     for (const c of this.swings) {
       const d = this.waitD.get(this.viewOf(c.spec));
       if (d !== undefined) c.ph += d;
@@ -1661,6 +1790,9 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
       b.angle = b.phase + b.speed * b.ph;
     }
     for (const c of this.crumbles) this.stepCrumble(c, dt);
+    if (this.wind) this.wind.step(dt);
+    if (this.rhythm) this.rhythm.step(dt);
+    if (this.train) this.train.step(dt);
   }
 
   holdWave(c, t, m) {
@@ -1756,6 +1888,8 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
   }
 
   resetCrumbles() {
+    if (this.rhythm) this.rhythm.reset();
+    if (this.train) this.train.reset();
     for (const c of this.crumbles) {
       this.crumbleLook(c, false);
       c.crumble.state = 'idle';
@@ -1875,7 +2009,7 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
       for (const a of this.arches) {
         const near = !!this.view && Math.abs(c.z - a.z) < 8 && Math.abs(c.x - a.x) < a.half + 3 && c.y < a.y + 2.2;
         const block = !!this.focus && this.archBlocks(a, c, this.focus);
-        const close = Math.abs(c.z - a.z) < 5 && Math.abs(c.x - a.x) < a.half + 2 && c.y < a.y + 4;
+        const close = !a.finish && Math.abs(c.z - a.z) < 5 && Math.abs(c.x - a.x) < a.half + 2 && c.y < a.y + 4;
         const k = 1 - Math.exp(-12 * dt);
         a.a += ((close ? 0 : near || block || a.label ? 0.12 : 1) - a.a) * (close ? 1 - Math.exp(-24 * dt) : k);
         a.banner.visible = a.a > 0.02;
@@ -1894,6 +2028,9 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
     if (this.mats.has('puffWarn')) this.mats.get('puffWarn').emissiveIntensity = 2.2 + Math.sin(t * Math.PI * 3) * 0.8;
     this.updateCoins(dt);
     if (this.decor && this.decor.update) this.decor.update(t, dt);
+    if (this.wind) this.wind.update(t, dt);
+    if (this.rhythm) this.rhythm.update(t, dt);
+    if (this.train) this.train.update(t, dt);
   }
 
   groundBelow(x, z, fromY, r = 0.3) {
@@ -1925,7 +2062,7 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
   raycast(o, d, maxD) {
     let best = maxD;
     for (const c of this.colliders) {
-      if (!c.active) continue;
+      if (!c.active || c.noCam) continue;
       const hx = c.shape === 'cyl' ? c.r : c.hx;
       const hz = c.shape === 'cyl' ? c.r : c.hz;
       const cs = Math.cos(c.yaw);

@@ -1,4 +1,6 @@
 import { worldDef } from './themes.js';
+import { stormSeq, stormExtra } from './storm-course.js';
+import { gearSeq, gearExtra, musicBox } from './gear-course.js';
 
 export const PHYS = {
   gravity: 30,
@@ -558,6 +560,13 @@ const EXTRA = {
   ],
 };
 
+const KIT = { steps, bridge, sideMovers, pad, barBeam, island, conveyor, stairs };
+SEQ[5] = stormSeq(KIT);
+EXTRA[5] = stormExtra(KIT);
+SEQ[6] = gearSeq({ ...KIT, tramps, disks, spinPlanks });
+EXTRA[6] = gearExtra({ ...KIT, disks });
+const SECRET = { 6: musicBox };
+
 function bonus(b, level, side) {
   const cp = b.cps[b.cps.length - 1];
   let edge = cp.x + side * cp.r;
@@ -566,6 +575,7 @@ function bonus(b, level, side) {
   const n = level === 1 ? 2 : 3;
   const w = level === 1 ? 2.6 : 1.8;
   const gap = b.def.bonusGap || (level === 1 ? 2.3 : level === 2 ? 4.2 : 4.8);
+  if (b.def.bonusMark) b.add({ t: 'takeoff', x: edge - side * 0.5, y, z: z - 0.9, dir: side });
   for (let i = 0; i < n; i++) {
     const x = edge + side * (gap + w / 2);
     y += level === 1 ? 0.7 : 0.9;
@@ -598,7 +608,7 @@ export function buildCourse(world, extra = false) {
       const sr = !extra && b.def.secret;
       if (sr && sr.at === i) {
         const cp = b.cps[b.cps.length - 1];
-        secretRoute(b, sr.side, { x: cp.x - sr.side * 1.6, y: cp.y, z: cp.z + 1.2 });
+        (SECRET[b.w] || secretRoute)(b, sr.side, { x: cp.x - sr.side * 1.6, y: cp.y, z: cp.z + 1.2 });
       }
     } else b.finish();
   });

@@ -310,3 +310,19 @@ export function nearFade(m, key, r = 3.5) {
   m.customProgramCacheKey = () => key + 'NF';
   return m;
 }
+
+export function nearDim(m, key, r0, r1) {
+  const prev = m.onBeforeCompile;
+  m.onBeforeCompile = (sh, renderer) => {
+    if (prev) prev(sh, renderer);
+    sh.vertexShader = 'varying float vNearD;\n' + sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n vNearD = -mvPosition.z;');
+    sh.fragmentShader = 'varying float vNearD;\n' + sh.fragmentShader.replace('#include <opaque_fragment>', '#include <opaque_fragment>\n { float nk = smoothstep(' + r0.toFixed(2) + ', ' + r1.toFixed(2) + ', vNearD); gl_FragColor.rgb = mix(gl_FragColor.rgb * 0.35, gl_FragColor.rgb, nk); gl_FragColor.a *= mix(0.25, 1.0, nk); }');
+  };
+  m.customProgramCacheKey = () => key + 'ND';
+  return m;
+}
+
+export function glowColor(c, target) {
+  const col = new THREE.Color(c);
+  return col.multiplyScalar(target / (0.2126 * col.r + 0.7152 * col.g + 0.0722 * col.b));
+}

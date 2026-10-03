@@ -219,6 +219,8 @@ function loadWorld(id, bonus = false) {
   G.course = buildCourse(id, bonus);
   G.world = new World(scene, def, G.course);
   G.world.camera = camera;
+  G.world.audio = audio;
+  G.world.runClock = () => G.runTime;
   G.world.decor.sky.onBeforeRender = () => {
     if (G.shadowCalls === null) G.shadowCalls = renderer.info.render.calls - G.mainStart;
   };
@@ -496,6 +498,12 @@ function updateHud() {
 }
 
 function emitDust(x, y, z, n, spread, color, size = 0.9, up = 1.2) {
+  const k = (G.def && G.def.dustScale) || 1;
+  if (k < 1 && color === G.def.dust) {
+    n = Math.max(1, Math.round(n * k));
+    size *= k;
+    spread *= k;
+  }
   for (let i = 0; i < n; i++) {
     const a = (i / n) * Math.PI * 2 + Math.random() * 0.5;
     const s = spread * (0.6 + Math.random() * 0.6);
@@ -544,6 +552,20 @@ function handlePlayerEvents() {
     } else if (e.type === 'ledge') {
       emitDust(x, y, z, 6, 1.6, dustColor(), 0.5, 0.8);
       logEvent('ledge');
+    } else if (e.type === 'wind') {
+      G.cause = { t: G.runTime, at: new THREE.Vector3(e.data.x, e.data.y + 0.6, e.data.z) };
+    } else if (e.type === 'lift' || e.type === 'liftOff') {
+      if (e.type === 'lift') audio.whoosh();
+      else {
+        audio.pad();
+        const tg = e.data.target;
+        G.cause = { t: G.runTime, at: new THREE.Vector3(tg.x, tg.y + 0.6, tg.z) };
+      }
+      logEvent(e.type);
+      for (let i = 0; i < 18; i++) {
+        const a = (i / 18) * Math.PI * 2;
+        glow.emit(x + Math.cos(a) * 0.8, y + 0.2, z + Math.sin(a) * 0.8, Math.cos(a) * 1.5, 3 + Math.random() * 3, Math.sin(a) * 1.5, { life: 0.7, size: 0.45, size1: 0.05, color: 0xbfefff, drag: 2 });
+      }
     }
     else if (e.type === 'kill') die('hazard');
   }
@@ -562,7 +584,7 @@ function die(reason) {
   if (reason === 'fall') {
     audio.splash();
     const hit = G.cause && G.runTime - G.cause.t < 2 ? G.cause : null;
-    G.deathHold = hit ? 1.8 : 0.66;
+    G.deathHold = hit ? 1.8 : p.walked ? 1.5 : 0.66;
     rig.frozenY = p.groundY + 1.4;
     rig.watch = hit ? hit.at : p.pos;
     G.splashed = false;
@@ -1028,6 +1050,7 @@ function emitTrail(dt) {
 
 const _pa = new THREE.Vector3();
 const _pb = new THREE.Vector3();
+const _fin = new THREE.Vector3();
 
 function markArchesUnderLabel() {
   const r = G.ui.labelRect();
@@ -1035,7 +1058,7 @@ function markArchesUnderLabel() {
   const h = window.innerHeight;
   for (const a of G.world.arches || []) {
     a.label = false;
-    if (!r) continue;
+    if (!r || a.finish) continue;
     _pa.set(a.x - a.half, a.y + 0.75, a.z).project(camera);
     _pb.set(a.x + a.half, a.y - 0.75, a.z).project(camera);
     if (_pa.z > 1 || _pb.z > 1) continue;
@@ -1098,6 +1121,11 @@ function stateStep(dt) {
       G.invuln -= dt;
       p.setRim(0xffffff, 0.7 + Math.sin(G.invuln * 12) * 0.4);
       if (G.invuln <= 0) p.setRim(rimColor(), rimStrength());
+    }
+    const lifting = !!(G.world.wind && G.world.wind.ride) || p.liftFlight;
+    if (lifting !== !!G.liftRim && !(G.invuln > 0)) {
+      G.liftRim = lifting;
+      p.setRim(rimColor(), rimStrength() * (lifting ? 0.3 : 1));
     }
   }
   if (G.state === 'dead') {
@@ -1174,15 +1202,17 @@ function frame() {
   }
   stateStep(dt);
   const look = input.takeLook();
-  G.world.setWindow(['menu', 'shop', 'loading'].includes(G.state) ? 0 : G.state === 'finish' || G.state === 'results' ? 'all' : G.cp);
+  G.world.setWindow(['menu', 'shop', 'loading'].includes(G.state) ? 0 : G.state === 'finish' ? 'all' : G.state === 'results' ? 'end' : G.cp);
   if (G.state === 'play' || G.state === 'dead') {
-    rig.extraDist = (G.course.meta[G.cp] || {}).camBack || 0;
+    const W = G.world;
+    const finRide = G.cp === G.course.cps.length - 2 && (p.liftFlight || !!(W.wind && W.wind.ride) || !!(W.train && W.train.carts.some((c) => c.mode === 'go')));
+    rig.extraDist = Math.max((G.course.meta[G.cp] || {}).camBack || 0, finRide ? 3 : 0);
     rig.applyLook(look, input.touchMode);
     autoCamera(dt, look);
     rig.follow(dt, p, G.world);
   } else if (G.state === 'finish' || G.state === 'results') {
     rig.orbitT = Math.PI + Math.sin(G.finishT * 0.35) * 0.75;
-    rig.orbit(dt, p.pos, 7.5, 2.6, 0, 0);
+    rig.orbit(dt, _fin.set(p.pos.x, p.pos.y + 1.4, p.pos.z), 9, 2.6, 0, 0);
     p.faceTarget = Math.atan2(camera.position.x - p.pos.x, camera.position.z - p.pos.z);
   } else if (G.state === 'menu' || G.state === 'shop' || G.state === 'loading') {
     const wide = window.innerWidth > 820;
@@ -1355,7 +1385,7 @@ Object.defineProperty(window, '__obby', {
         shadowCalls: f.shadow,
         mainCalls: f.main,
         postCalls: f.post,
-        window: w ? (w.window === 'all' ? 'all' : [w.window - 1, w.window + 4]) : null,
+        window: w ? (typeof w.window === 'string' ? w.window : [w.window - 1, w.window + 4]) : null,
         stagesVisible: w ? w.stageGroups.filter((g) => g && g.visible).length : 0,
         stages: w ? w.stageGroups.length : 0,
         fps: G.fps,

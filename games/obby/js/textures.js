@@ -211,6 +211,7 @@ export function rock(kind = 'dirt') {
       dirt: [hex(0x7a5236), hex(0xb07a4c), hex(0x5e3d27)],
       basalt: [hex(0x2e2733), hex(0x4d4252), hex(0x1c171f)],
       ice: [hex(0x9fd8ff), hex(0xe4f6ff), hex(0x6ab8ef)],
+      slate: [hex(0x8a909c), hex(0xb4b8c0), hex(0x5c626e)],
       root: [hex(0x3a2a1e), hex(0x6a4c34), hex(0x22180f)],
     }[kind];
     const c = paint(S, (x, y) => {

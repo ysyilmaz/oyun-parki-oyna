@@ -6,6 +6,7 @@ import * as TX from './textures.js';
 const COYOTE = 0.14;
 const BUFFER = 0.14;
 const CLIMB = 0.16;
+const SETTLE = 0.6;
 
 function smoothNormals(g) {
   const pos = g.attributes.position;
@@ -324,6 +325,7 @@ export class Player {
     this.airTime = 0;
     this.launched = false;
     this.groundY = 0;
+    this.walked = false;
     this.padFlight = false;
     this.dead = false;
     this.frozen = false;
@@ -556,6 +558,8 @@ export class Player {
     this.dead = false;
     this.launched = false;
     this.padFlight = false;
+    this.liftFlight = false;
+    this.settleT = 0;
     this.emote = null;
     this.sy = 1;
     this.sv = 0;
@@ -606,7 +610,11 @@ export class Player {
         p.z += gc.conv.vz * dt;
       }
     }
-    const mv = input.move();
+    let mv = input.move();
+    if (this.settleT > 0) {
+      this.settleT -= dt;
+      mv = { x: 0, y: 0 };
+    }
     const side = mv.x * (Math.abs(mv.y) > 0.1 ? (this.grounded ? 0.5 : (world.def && world.def.airSide) || 0.5) : 0.65);
     const sy = Math.sin(camYaw);
     const cy = Math.cos(camYaw);
@@ -620,8 +628,9 @@ export class Player {
     if (this.grounded) rate = ice ? (hasInput ? 2.2 : 0.7) : hasInput ? 14 : 32;
     else if (this.padFlight) {
       rate = 11.2;
-      tx = this.aim.x + wx * 1.5;
-      tz = this.aim.z + wz * 1.5;
+      const steer = this.liftFlight ? 0 : 1.5;
+      tx = this.aim.x + wx * steer;
+      tz = this.aim.z + wz * steer;
     } else rate = hasInput ? 11.2 : 0.8;
     const k = 1 - Math.exp(-rate * dt);
     v.x += (tx - v.x) * k;
@@ -637,7 +646,20 @@ export class Player {
     if (this.grounded) this.coyote = COYOTE;
     else this.coyote -= dt;
     let jumped = false;
-    if (this.jumpBuf > 0 && this.coyote > 0) {
+    const near = this.jumpBuf > 0 && this.grounded && this.ground && this.ground.surface !== 'pad' && world.padNear ? world.padNear(p.x, p.y, p.z) : null;
+    if (near) {
+      p.y = Math.max(p.y, near.y + near.hy);
+      v.y = near.power;
+      if (near.target) this.aimAt(near.target);
+      this.launched = true;
+      this.grounded = false;
+      this.ground = null;
+      this.coyote = 0;
+      this.jumpBuf = 0;
+      this.sy = 1.3;
+      jumped = true;
+      this.push('pad', near);
+    } else if (this.jumpBuf > 0 && this.coyote > 0) {
       v.y = PHYS.jump;
       this.grounded = false;
       this.coyote = 0;
@@ -659,6 +681,7 @@ export class Player {
     else if (!input.jumpHeld && !this.launched) gm = 2.4;
     v.y -= PHYS.gravity * gm * dt;
     if (v.y < -32) v.y = -32;
+    if (world.wind) world.wind.act(this, dt, hasInput, PHYS.gravity * gm * dt);
     if (v.y <= 0) this.launched = false;
     const prevFeet = p.y;
     const prevHead = p.y + H;
@@ -811,6 +834,10 @@ export class Player {
       const g = this.ground;
       this.groundY = p.y;
       this.padFlight = false;
+      if (this.liftFlight) {
+        this.liftFlight = false;
+        this.settleT = SETTLE;
+      }
       if (!wasGrounded) {
         if (g.surface !== 'tramp' && g.surface !== 'pad' && this.airTime > 0.18) {
           this.sy = 0.76;
@@ -837,7 +864,11 @@ export class Player {
         this.push('tramp', g);
       } else if (g.crumble) world.touchCrumble(g);
       this.airTime = 0;
-    } else this.airTime += dt;
+      this.walked = true;
+    } else {
+      this.airTime += dt;
+      if (v.y > 1) this.walked = false;
+    }
     const sp = Math.hypot(v.x, v.z);
     if (sp > 0.6 && (hasInput || !this.grounded)) this.faceTarget = Math.atan2(v.x, v.z);
     if (this.grounded && sp > 3) {

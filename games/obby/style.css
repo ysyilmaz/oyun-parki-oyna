@@ -208,6 +208,17 @@ svg { display: block; }
 .worlds.many .world-card .wc-stars svg { width: 21px; height: 21px; }
 .worlds.many .world-card .wc-num { width: 34px; height: 34px; font-size: 19px; }
 .worlds.many .bonus-chip { font-size: 17px; min-height: 46px; }
+.worlds.five { gap: 10px; }
+.worlds.five .world-card { width: 136px; height: 120px; }
+.worlds.five .world-card .wc-name { font-size: 16px; }
+.world-col:nth-child(5) .world-card { animation-delay: 0.32s; }
+.worlds.six { gap: 8px; }
+.worlds.six .world-card { width: 112px; height: 100px; border-radius: 20px; border-width: 4px; }
+.worlds.six .world-card .wc-name { font-size: 14px; bottom: 6px; -webkit-text-stroke-width: 4px; }
+.worlds.six .world-card .wc-stars svg { width: 16px; height: 16px; }
+.worlds.six .world-card .wc-num { width: 28px; height: 28px; font-size: 16px; border-width: 3px; top: 6px; left: 7px; }
+.worlds.six .bonus-chip { font-size: 14px; min-height: 46px; }
+.world-col:nth-child(6) .world-card { animation-delay: 0.4s; }
 @keyframes cardIn { 0% { transform: scale(0); } 70% { transform: scale(1.1); } 100% { transform: scale(1); } }
 .world-card:hover { transform: translateY(-4px) rotate(-1.5deg); }
 .world-card.selected { transform: translateY(-8px) scale(1.06); box-shadow: 0 0 0 6px #fff, 0 0 0 11px var(--ink), 0 18px 30px rgba(10, 30, 70, 0.4); }
@@ -409,7 +420,9 @@ svg { display: block; }
 .res-row { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 18px; border-radius: 22px; background: #eef3fb; border: 4px solid var(--ink); min-width: 118px; }
 .res-row span { font-size: 18px; color: var(--ink-soft); }
 .res-row b { font-size: 34px; font-variant-numeric: tabular-nums; }
-.record { font-size: 30px; color: #fff; background: linear-gradient(180deg, #ff7a8a, var(--red)); border: 5px solid var(--ink); border-radius: 18px; padding: 6px 22px; transform: rotate(-4deg); box-shadow: 0 5px 0 var(--ink); animation: stamp 0.5s 1.2s var(--pop) both; }
+.res-extra { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; }
+.res-extra:not(:has(> :not(.hidden))) { display: none; }
+.record { font-size: 24px; color: #fff; background: linear-gradient(180deg, #ff7a8a, var(--red)); border: 4px solid var(--ink); border-radius: 16px; padding: 4px 16px; transform: rotate(-4deg); box-shadow: 0 5px 0 var(--ink); animation: stamp 0.5s 1.2s var(--pop) both; }
 @keyframes stamp { 0% { transform: rotate(-4deg) scale(3); opacity: 0; } 100% { transform: rotate(-4deg) scale(1); opacity: 1; } }
 .res-best { font-size: 20px; color: var(--ink-soft); min-height: 24px; }
 .gift-pill { font-size: 24px; gap: 8px; animation: stamp 0.5s 1.4s var(--pop) both; }
@@ -562,4 +575,14 @@ kbd.wide { min-width: 120px !important; font-size: 26px !important; }
   .res-row b { font-size: 28px; }
   .res-best { min-height: 0; }
   .card .btn { min-height: 72px; }
+  .result-card { gap: 10px; padding-top: 40px; margin-top: 34px; }
+  .result-trophy { width: 76px; height: 76px; top: -42px; }
+  .result-trophy svg { width: 48px; height: 48px; }
+  .result-card h2 { font-size: 40px; }
+  .result-card .stars .star { width: 56px; height: 56px; }
+  .result-card .star-col { gap: 4px; }
+  .result-card .btn { min-height: 62px; }
+  .result-card .record { font-size: 20px; }
+  .result-card .gift-pill { font-size: 20px; }
+  .result-card .gift-pill .ico { width: 26px; height: 26px; }
 }

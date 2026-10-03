@@ -3,6 +3,8 @@ import * as TX from './textures.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { jitter, vertexGradient } from './geo.js';
 import { skyMaterial, waterMaterial, lavaMaterial, gridMaterial, canopyMaterial, nearFade } from './shaders.js';
+import { stormSky, cloudSeaMaterial, buildStorm } from './storm.js';
+import { mechanismMaterial, buildClockwork } from './clockwork.js';
 
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
@@ -45,7 +47,7 @@ export function buildDecor(world) {
   const len = b.maxZ - b.minZ;
   const yAt = (z) => THREE.MathUtils.lerp(0, b.maxY, THREE.MathUtils.clamp(-z / len, 0, 1));
 
-  const skyM = T(skyMaterial(def));
+  const skyM = T(def.sky.clouds ? stormSky(def) : skyMaterial(def));
   const sky = new THREE.Mesh(T(new THREE.SphereGeometry(1500, 48, 24)), skyM);
   sky.renderOrder = -10;
   sky.frustumCulled = false;
@@ -57,7 +59,7 @@ export function buildDecor(world) {
 
   const floorGeo = T(new THREE.PlaneGeometry(4000, 4000, 1, 1));
   floorGeo.rotateX(-Math.PI / 2);
-  const BELOW = { water: waterMaterial, lava: lavaMaterial, void: gridMaterial, canopy: () => canopyMaterial(def.belowColors) };
+  const BELOW = { water: waterMaterial, lava: lavaMaterial, void: gridMaterial, canopy: () => canopyMaterial(def.belowColors), cloudsea: () => cloudSeaMaterial(def.belowColors), mechanism: () => mechanismMaterial(def.belowColors) };
   const floorM = T(BELOW[def.below]());
   const floor = new THREE.Mesh(floorGeo, floorM);
   floor.position.set(0, def.belowY, (b.minZ + b.maxZ) / 2);
@@ -114,11 +116,11 @@ export function buildDecor(world) {
   const underM = T(new THREE.MeshStandardMaterial({ map: underTex, vertexColors: true, roughness: d.underRough, flatShading: true, emissive: d.underGlow, emissiveIntensity: 0.4 }));
   const unders = new THREE.InstancedMesh(coneGeo, underM, islands.length + under.length);
   islands.forEach((il, i) => setInst(unders, i, il.x, il.y - 0.2, il.z, il.s * 0.95, il.s * il.depth, il.s * 0.95, rnd() * 6));
-  under.forEach((u, k) => setInst(unders, islands.length + k, u.x, u.y, u.z, u.s, u.d, u.s, rnd() * 6));
+  under.forEach((u, k) => setInst(unders, islands.length + k, u.x, u.y, u.z, u.s, u.d * d.underDepth, u.s, rnd() * 6));
   unders.receiveShadow = true;
   g.add(unders);
 
-  const SETS = { trees: () => buildTrees(islands), clouds: buildClouds, lava: buildLavaWorld, space: buildSpace, grove: buildGrove };
+  const SETS = { trees: () => buildTrees(islands), clouds: buildClouds, lava: buildLavaWorld, space: buildSpace, grove: buildGrove, storm: () => buildStorm({ world, g, T, R, rnd, updaters, clear, yAt, b, len, def, floorM }), clock: () => buildClockwork({ world, g, T, R, rnd, updaters, clear, yAt, b, len, def }) };
   for (const k of d.sets) SETS[k]();
 
   function buildTrees(isl) {
