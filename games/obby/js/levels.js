@@ -1,6 +1,7 @@
 import { worldDef } from './themes.js';
 import { stormSeq, stormExtra } from './storm-course.js';
 import { gearSeq, gearExtra, musicBox } from './gear-course.js';
+import { paperSeq, paperExtra, inkRoad } from './paper-course.js';
 
 export const PHYS = {
   gravity: 30,
@@ -565,7 +566,9 @@ SEQ[5] = stormSeq(KIT);
 EXTRA[5] = stormExtra(KIT);
 SEQ[6] = gearSeq({ ...KIT, tramps, disks, spinPlanks });
 EXTRA[6] = gearExtra({ ...KIT, disks });
-const SECRET = { 6: musicBox };
+SEQ[7] = paperSeq({ ...KIT, tramps, disks, swing, crumble });
+EXTRA[7] = paperExtra({ ...KIT, disks });
+const SECRET = { 6: musicBox, 7: inkRoad };
 
 function bonus(b, level, side) {
   const cp = b.cps[b.cps.length - 1];
@@ -579,7 +582,7 @@ function bonus(b, level, side) {
   for (let i = 0; i < n; i++) {
     const x = edge + side * (gap + w / 2);
     y += level === 1 ? 0.7 : 0.9;
-    const o = { x, y, z: z + (i % 2 ? 0.9 : -0.9), sx: w, sz: w, sy: 0.8, color: b.col(), side: true };
+    const o = { x, y, z: z + (i % 2 ? 0.9 : -0.9), sx: w, sz: w, sy: 0.8, color: b.def.bonusPlain ? 0 : b.col(), side: true };
     if (level >= 2 && i === 1) {
       o.style = 'crumble';
       o.crumble = b.def.crumbleHold ? { delay: 0.55, hold: true } : { delay: 0.55 };
@@ -612,6 +615,7 @@ export function buildCourse(world, extra = false) {
       }
     } else b.finish();
   });
+  for (const s of b.specs) if (s.toCp !== undefined && b.cps[s.toCp]) s.to = { x: b.cps[s.toCp].x, y: b.cps[s.toCp].y, z: b.cps[s.toCp].z };
   let minY = Infinity;
   let maxY = -Infinity;
   let minZ = Infinity;

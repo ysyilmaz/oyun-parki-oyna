@@ -12,6 +12,7 @@ const ART = {
   4: `<svg viewBox="0 0 180 150" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="w4s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0a2430"/><stop offset="0.75" stop-color="#4a9a8c"/><stop offset="1" stop-color="#2e5a2a"/></linearGradient></defs><rect width="180" height="150" fill="url(#w4s)"/><circle cx="142" cy="28" r="10" fill="#d8fff0" opacity="0.9"/><rect x="14" y="0" width="22" height="150" fill="#3a2a1e"/><rect x="150" y="0" width="18" height="150" fill="#2e2016"/><path d="M36 54q16-6 24 4h-24z" fill="#eadfc6"/><path d="M36 94q12-5 20 3h-20z" fill="#eadfc6"/><path d="M60 10v58M98 10v58" stroke="#4a6a3a" stroke-width="3"/><rect x="54" y="66" width="50" height="9" rx="3" fill="#b88a5a"/><circle cx="60" cy="66" r="3" fill="#7affd8"/><circle cx="98" cy="66" r="3" fill="#7affd8"/><path d="M104 122q22-26 44 0z" fill="#8f6cf0"/><path d="M110 122h32" stroke="#38c8dc" stroke-width="3"/><rect x="122" y="122" width="8" height="28" fill="#eadfc6"/><rect x="20" y="118" width="70" height="12" rx="6" fill="#4a8a5a"/><circle cx="124" cy="40" r="1.6" fill="#ffe8a8"/><circle cx="84" cy="30" r="1.4" fill="#ffe8a8"/><circle cx="46" cy="110" r="1.4" fill="#ffe8a8"/></svg>`,
   5: `<svg viewBox="0 0 180 150" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="w5s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#26344e"/><stop offset="0.55" stop-color="#4a566c"/><stop offset="0.7" stop-color="#8fa6b4"/><stop offset="1" stop-color="#3a4660"/></linearGradient></defs><rect width="180" height="150" fill="url(#w5s)"/><path d="M0 58q22-14 44-6 18-16 40-4 20-12 40 0 24-10 56 2v14H0z" fill="#3a4660" opacity="0.85"/><path d="M0 120q30-10 60-2 30-10 60 0 30-8 60 2v30H0z" fill="#525e74"/><path d="M0 128q40-8 90 0 40 6 90-2v24H0z" fill="#2e3a52"/><rect x="132" y="40" width="4" height="52" fill="#9aa4b4"/><g transform="translate(134 40)"><path d="M0 0l2-24 3 1z" fill="#b8bcc4"/><path d="M0 0l22 10-1 3z" fill="#b8bcc4"/><path d="M0 0l-21 12-1-3z" fill="#b8bcc4"/><circle r="3" fill="#8a94a4"/></g><path d="M24 92h70l-8 22-27 10-27-10z" fill="#b8b0a0"/><rect x="20" y="84" width="78" height="11" rx="5" fill="#e9e3d2"/><rect x="30" y="80" width="18" height="6" rx="2" fill="#4f72b0"/><rect x="58" y="80" width="18" height="6" rx="2" fill="#7a5a34"/><path d="M12 66h40M30 74h52M60 60h34" stroke="#bfe6f4" stroke-width="2.5" stroke-linecap="round" opacity="0.85"/><circle cx="40" cy="70" r="7" fill="none" stroke="#2fa8d8" stroke-width="3"/></svg>`,
   6: `<svg viewBox="0 0 180 150" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="w6s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#26357e"/><stop offset="0.6" stop-color="#ffd6a6"/><stop offset="1" stop-color="#3a2014"/></linearGradient></defs><rect width="180" height="150" fill="url(#w6s)"/><g transform="translate(140 46)" fill="#b5873c"><circle r="26"/><g fill="#b5873c">${Array.from({ length: 12 }, (_, i) => `<rect x="-5" y="-33" width="10" height="10" transform="rotate(${i * 30})"/>`).join('')}</g><circle r="17" fill="#7a5228"/><circle r="6" fill="#ffd6a6"/></g><g transform="translate(104 24)" fill="#7a5228"><circle r="13"/>${Array.from({ length: 8 }, (_, i) => `<rect x="-3.5" y="-18" width="7" height="7" transform="rotate(${i * 45 + 22})"/>`).join('')}<circle r="5" fill="#b5873c"/></g><rect x="18" y="20" width="30" height="96" fill="#f1e9d6"/><path d="M14 22l19-16 19 16z" fill="#2a52c8"/><circle cx="33" cy="44" r="11" fill="#fff6e4" stroke="#1e2a6a" stroke-width="2.5"/><path d="M33 44v-8M33 44l5 3" stroke="#1e2a6a" stroke-width="2.2" stroke-linecap="round"/><rect x="18" y="70" width="30" height="4" fill="#b5873c"/><path d="M58 104h66l-6 16-27 10-27-10z" fill="#5a3220"/><rect x="56" y="96" width="70" height="10" rx="3" fill="#e9dfcc"/><rect x="130" y="108" width="36" height="8" rx="3" fill="#24409a"/><rect x="133" y="110" width="30" height="4" rx="2" fill="none" stroke="#fff1d6" stroke-width="1.5"/><circle cx="76" cy="96" r="5" fill="#35e0ff"/></svg>`,
+  7: `<svg viewBox="0 0 180 150" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="w7s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6f93b8"/><stop offset="1" stop-color="#b4a080"/></linearGradient></defs><rect width="180" height="150" fill="url(#w7s)"/><circle cx="138" cy="34" r="14" fill="#fff4dc"/><path d="M0 92l26-22 22 14 30-30 28 26 24-16 50 30v56H0z" fill="#4a5466"/><path d="M0 104l34-18 28 12 34-20 30 18 26-10 28 16v48H0z" fill="#7a6248"/><path d="M0 116l40-12 36 10 30-14 36 12 38-6v44H0z" fill="#6e7c66"/><path d="M0 126h180v24H0z" fill="#4a4038"/><path d="M0 126h180" stroke="#6a5c4c" stroke-width="1.5" stroke-dasharray="5 4"/><g transform="translate(62 92)"><path d="M0 30h56v-30H0z" fill="#f2ece0" stroke="#3a3a44" stroke-width="2"/><path d="M28 0v30" stroke="#3a3a44" stroke-width="1.5"/><path d="M8 0l10-14 10 14z" fill="#a8865e" stroke="#3a3a44" stroke-width="1.5"/><path d="M32 0l8-10 8 10z" fill="#8fa38a" stroke="#3a3a44" stroke-width="1.5"/></g></svg>`,
 };
 
 export class UI {
@@ -95,6 +96,7 @@ export class UI {
     box.classList.toggle('many', WORLDS.length > 3);
     box.classList.toggle('five', WORLDS.length > 4);
     box.classList.toggle('six', WORLDS.length > 5);
+    box.classList.toggle('seven', WORLDS.length > 6);
     const s = this.g.save;
     WORLDS.forEach((w) => {
       const locked = !this.g.isUnlocked(w.id);
@@ -428,7 +430,7 @@ export class UI {
     $('resSecret').textContent = r.secret || 0;
     $('resDeaths').textContent = r.deaths;
     $('resRecord').classList.toggle('hidden', !r.record);
-    $('resBest').textContent = r.best && !r.record ? 'En iyi: ' + fmt(r.best) : '';
+    $('resBest').textContent = r.best && !r.record && fmt(r.best) !== fmt(r.time) ? 'En iyi: ' + fmt(r.best) : '';
     $('nextWorldBtn').classList.toggle('hidden', !r.next);
     const gift = r.gifts && r.gifts.length ? 'Yeni kostüm: ' + r.gifts.join(', ') : '';
     $('resGiftT').textContent = gift;
@@ -440,7 +442,7 @@ export class UI {
       return;
     }
     $('goalBonusN').textContent = `${r.big}/${r.bigMax}`;
-    $('goalParT').textContent = fmt(r.par);
+    $('goalParT').textContent = '≤ ' + fmt(r.par);
     const cols = [...document.querySelectorAll('#resStars .star-col')];
     cols.forEach((c) => c.classList.remove('shown', 'on', 'miss'));
     cols.forEach((c, i) => {

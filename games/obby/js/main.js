@@ -24,6 +24,7 @@ const GRADES = {
   4: { sat: 1.06, shadow: [-0.01, 0.012, 0.03], high: [0.022, 0.014, -0.016], contrast: 0.1 },
   5: { sat: 1.04, shadow: [-0.006, 0.0, 0.03], high: [0.012, 0.01, 0.0], contrast: 0.12 },
   6: { sat: 1.06, shadow: [0.006, -0.006, 0.032], high: [0.03, 0.012, -0.025], contrast: 0.1 },
+  7: { sat: 0.96, shadow: [0.012, 0.004, -0.004], high: [0.018, 0.012, -0.012], contrast: 0.08 },
 };
 const CHEST = 15;
 const BONUS_STARS = 2;
@@ -814,8 +815,9 @@ function finishRun() {
   p.vel.set(0, 0, 0);
   p.animOverride = 'Dance';
   audio.win();
+  if (G.world.paper && G.world.paper.book) audio.crescendo(2);
   const c = G.course.cps[G.cp];
-  confetti.burst(c.x, c.y + 2, c.z, 160, 11, 1, FINISH_CONFETTI);
+  confetti.burst(c.x, c.y + 2, c.z, 160, 11, 1, G.def.confetti || FINISH_CONFETTI);
   G.ui.toast('BİTİŞ!');
   const id = G.worldId;
   const s = G.save;
@@ -1266,8 +1268,8 @@ function stateStep(dt) {
   }
   if (G.state === 'finish') {
     G.finishT += dt;
-    if (G.finishT > 0.8 && G.finishT - dt <= 0.8) confetti.burst(p.pos.x - 2, p.pos.y + 3, p.pos.z, 100, 9, 1, FINISH_CONFETTI);
-    if (G.finishT > 1.6 && G.finishT - dt <= 1.6) confetti.burst(p.pos.x + 2, p.pos.y + 3, p.pos.z, 100, 9, 1, FINISH_CONFETTI);
+    if (G.finishT > 0.8 && G.finishT - dt <= 0.8) confetti.burst(p.pos.x - 2, p.pos.y + 3, p.pos.z, 100, 9, 1, G.def.confetti || FINISH_CONFETTI);
+    if (G.finishT > 1.6 && G.finishT - dt <= 1.6) confetti.burst(p.pos.x + 2, p.pos.y + 3, p.pos.z, 100, 9, 1, G.def.confetti || FINISH_CONFETTI);
     if (G.finishT > 2.8 && G.finishT - dt <= 2.8) {
       G.state = 'results';
       p.animOverride = 'ThumbsUp';
@@ -1321,8 +1323,14 @@ function frame() {
     autoCamera(dt, look);
     rig.follow(dt, p, G.world);
   } else if (G.state === 'finish' || G.state === 'results') {
-    rig.orbitT = Math.PI + Math.sin(G.finishT * 0.35) * 0.75;
-    rig.orbit(dt, _fin.set(p.pos.x, p.pos.y + 1.4, p.pos.z), 9, 2.6, 0, 0);
+    const aim = G.world.paper && G.world.paper.finaleAim();
+    if (aim) {
+      rig.orbitT = aim.yaw + Math.sin(G.finishT * 0.35) * 0.3;
+      rig.orbit(dt, _fin.set(aim.x, aim.y, aim.z), aim.dist, aim.h, 0, 0);
+    } else {
+      rig.orbitT = Math.PI + Math.sin(G.finishT * 0.35) * 0.75;
+      rig.orbit(dt, _fin.set(p.pos.x, p.pos.y + 1.4, p.pos.z), 9, 2.6, 0, 0);
+    }
     p.faceTarget = Math.atan2(camera.position.x - p.pos.x, camera.position.z - p.pos.z);
   } else if (G.state === 'menu' || G.state === 'shop' || G.state === 'loading') {
     const wide = window.innerWidth > 820;

@@ -27,6 +27,7 @@ export const TRAILS = [
   { id: 'neon', name: 'Neon', price: 150, colors: [0x35e0ff, 0xff4fd8, 0xffffff], css: 'radial-gradient(circle at 35% 35%,#fff 0 14%,#35e0ff 16% 48%,#ff4fd8 50%)' },
   { id: 'firefly', name: 'Ateşböceği', price: 0, secret: 4, colors: [0xc8ff4a, 0xf4ffb0, 0x8aff9a], css: 'radial-gradient(circle at 40% 40%,#fbffd8 0 16%,#c8ff4a 18% 46%,#2a5a3a 48%)' },
   { id: 'nota', name: 'Nota', price: 0, secret: 6, colors: [0xfff1d6, 0x9fd8ff, 0xffffff], css: 'radial-gradient(circle at 40% 40%,#ffffff 0 16%,#fff1d6 18% 46%,#2a52c8 48%)' },
+  { id: 'murekkep', name: 'Mürekkep', price: 0, secret: 7, colors: [0x1e2a5a, 0x3a3a44, 0x5e6a7e], css: 'radial-gradient(circle at 40% 40%,#9aa6c8 0 14%,#1e2a5a 16% 46%,#f2ece0 48%)' },
 ];
 
 function defaults() {

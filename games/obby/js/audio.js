@@ -185,6 +185,34 @@ export class Sound {
     for (let i = 0; i < 6; i++) this.noise(0.3, { vol: 0.06, freq: 5000, type: 'highpass', when: 1 + i * 0.12 });
   }
 
+  crescendo(bars = 2) {
+    const c = this.ctx;
+    const d = this.musicDef;
+    if (!c || !d || !this.mus) return;
+    const beat = 60 / d.tempo;
+    const len = bars * 4 * beat;
+    const g = this.mus.gain;
+    const t = c.currentTime;
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(g.value, t);
+    g.linearRampToValueAtTime(0.42, t + len);
+    g.linearRampToValueAtTime(0.2, t + len + 1.5);
+    const hz = (k) => {
+      const sc = d.scale;
+      const oct = Math.floor(k / sc.length);
+      return 440 * Math.pow(2, (d.root + sc[((k % sc.length) + sc.length) % sc.length] + 12 * oct - 69) / 12);
+    };
+    const n = bars * 8;
+    for (let i = 0; i < n; i++) {
+      const when = i * (len / n);
+      const v = 0.04 + 0.1 * (i / n);
+      this.tone(hz(i), beat * 0.6, { type: 'triangle', vol: v, when, dest: this.mus });
+      this.tone(hz(i) / 2, beat * 0.6, { type: 'sine', vol: v * 0.8, when, dest: this.mus });
+    }
+    this.tone(hz(n + 7), beat * 3, { type: 'triangle', vol: 0.16, when: len, dest: this.mus });
+    this.tone(hz(n), beat * 3, { type: 'triangle', vol: 0.14, when: len, dest: this.mus });
+  }
+
   whoosh() {
     this.noise(0.3, { vol: 0.08, freq: 500, slide: 4, type: 'bandpass', q: 1.5 });
   }

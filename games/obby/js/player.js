@@ -758,7 +758,7 @@ export class Player {
         if (p.y >= top || p.y + H <= bot) continue;
         const hit = this.circleHit(c, p.x, p.z, R);
         if (!hit) continue;
-        const stepAllow = wasGrounded ? 0.5 : v.y <= 2 ? 0.3 : 0.04;
+        const stepAllow = c.spec && c.spec.lip ? 0.04 : wasGrounded ? 0.5 : v.y <= 2 ? 0.3 : 0.04;
         if (prevFeet >= top - c.dy - stepAllow - 0.02) {
           if (c.kill) {
             this.push('kill', c);

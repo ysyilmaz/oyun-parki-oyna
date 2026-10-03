@@ -773,8 +773,9 @@ class Rhythm {
       this.shutter.setMatrixAt(i, _m);
       this.shutter.setColorAt(i, _c.set(0xffffff).lerp(d.colors[0], 0.5 * (1 - o)));
       d.colors.forEach((c, j) => {
-        const off = d.colors.length > 1 ? (j - 0.5) * 0.7 : 0;
-        _m.compose(_p.set(s.x + off, s.y + 3.1, s.z + 0.24), _q.identity(), _s.setScalar(vis));
+        const big = d.s.lampScale || 1;
+        const off = (j - (d.colors.length - 1) / 2) * 0.7 * big;
+        _m.compose(_p.set(s.x + off, s.y + 3.1 + (big - 1) * 0.3, s.z + 0.24), _q.identity(), _s.setScalar(vis * big));
         this.doorLamp.setMatrixAt(li, _m);
         const sw = this.switches.find((x) => x.id === d.ids[j]);
         const lit = sw && sw.pressed && sw.t >= sw.runT;

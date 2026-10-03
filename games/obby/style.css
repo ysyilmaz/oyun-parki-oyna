@@ -218,6 +218,11 @@ svg { display: block; }
 .worlds.six .world-card .wc-stars svg { width: 16px; height: 16px; }
 .worlds.six .world-card .wc-num { width: 28px; height: 28px; font-size: 16px; border-width: 3px; top: 6px; left: 7px; }
 .worlds.six .bonus-chip { font-size: 14px; min-height: 46px; }
+.worlds.seven { gap: 6px; }
+.worlds.seven .world-card { width: 98px; height: 92px; border-radius: 18px; }
+.worlds.seven .world-card .wc-name { font-size: 13px; }
+.worlds.seven .world-card .wc-stars svg { width: 14px; height: 14px; }
+.worlds.seven .bonus-chip { font-size: 13px; }
 .world-col:nth-child(6) .world-card { animation-delay: 0.4s; }
 @keyframes cardIn { 0% { transform: scale(0); } 70% { transform: scale(1.1); } 100% { transform: scale(1); } }
 .world-card:hover { transform: translateY(-4px) rotate(-1.5deg); }

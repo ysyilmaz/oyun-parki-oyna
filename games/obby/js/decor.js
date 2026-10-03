@@ -5,6 +5,7 @@ import { jitter, vertexGradient } from './geo.js';
 import { skyMaterial, waterMaterial, lavaMaterial, gridMaterial, canopyMaterial, nearFade, cloudMaterial } from './shaders.js';
 import { stormSky, cloudSeaMaterial, buildStorm } from './storm.js';
 import { mechanismMaterial, buildClockwork } from './clockwork.js';
+import { canyonMaterial, buildPaper } from './paper-look.js';
 
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
@@ -59,7 +60,7 @@ export function buildDecor(world) {
 
   const floorGeo = T(new THREE.PlaneGeometry(4000, 4000, 1, 1));
   floorGeo.rotateX(-Math.PI / 2);
-  const BELOW = { water: () => waterMaterial(def), lava: lavaMaterial, void: gridMaterial, canopy: () => canopyMaterial(def.belowColors), cloudsea: () => cloudSeaMaterial(def.belowColors), mechanism: () => mechanismMaterial(def.belowColors) };
+  const BELOW = { water: () => waterMaterial(def), lava: lavaMaterial, void: gridMaterial, canopy: () => canopyMaterial(def.belowColors), cloudsea: () => cloudSeaMaterial(def.belowColors), mechanism: () => mechanismMaterial(def.belowColors), canyon: () => canyonMaterial(def.belowColors) };
   const floorM = T(BELOW[def.below]());
   const floor = new THREE.Mesh(floorGeo, floorM);
   floor.position.set(0, def.belowY, (b.minZ + b.maxZ) / 2);
@@ -120,7 +121,7 @@ export function buildDecor(world) {
   unders.receiveShadow = true;
   g.add(unders);
 
-  const SETS = { trees: () => buildTrees(islands), clouds: buildClouds, lava: buildLavaWorld, space: buildSpace, grove: buildGrove, storm: () => buildStorm({ world, g, T, R, rnd, updaters, clear, yAt, b, len, def, floorM }), clock: () => buildClockwork({ world, g, T, R, rnd, updaters, clear, yAt, b, len, def }) };
+  const SETS = { trees: () => buildTrees(islands), clouds: buildClouds, lava: buildLavaWorld, space: buildSpace, grove: buildGrove, storm: () => buildStorm({ world, g, T, R, rnd, updaters, clear, yAt, b, len, def, floorM }), clock: () => buildClockwork({ world, g, T, R, rnd, updaters, clear, yAt, b, len, def }), paper: () => buildPaper({ world, g, T, R, rnd, updaters, clear, yAt, b, len, def }) };
   for (const k of d.sets) SETS[k]();
 
   function buildTrees(isl) {
