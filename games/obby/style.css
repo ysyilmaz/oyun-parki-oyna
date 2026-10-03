@@ -207,7 +207,7 @@ svg { display: block; }
 .worlds.many .world-card .wc-name { font-size: 17px; }
 .worlds.many .world-card .wc-stars svg { width: 21px; height: 21px; }
 .worlds.many .world-card .wc-num { width: 34px; height: 34px; font-size: 19px; }
-.worlds.many .bonus-chip { font-size: 17px; min-height: 42px; }
+.worlds.many .bonus-chip { font-size: 17px; min-height: 46px; }
 @keyframes cardIn { 0% { transform: scale(0); } 70% { transform: scale(1.1); } 100% { transform: scale(1); } }
 .world-card:hover { transform: translateY(-4px) rotate(-1.5deg); }
 .world-card.selected { transform: translateY(-8px) scale(1.06); box-shadow: 0 0 0 6px #fff, 0 0 0 11px var(--ink), 0 18px 30px rgba(10, 30, 70, 0.4); }
@@ -327,6 +327,11 @@ svg { display: block; }
 #toast .toast-ico { display: inline-block; width: 1.1em; height: 1.1em; margin-left: 0.3em; vertical-align: -0.15em; }
 #hud .coin-pill small .sec { display: inline-block; }
 #toast.show { animation: toastIn 1.5s var(--pop) forwards; }
+#toast.away { animation: toastAway 0.18s ease-in forwards; }
+@keyframes toastAway {
+  0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -70%) scale(0.85); opacity: 0; }
+}
 @keyframes toastIn {
   0% { transform: translate(-50%, -50%) scale(0) rotate(-8deg); opacity: 1; }
   18% { transform: translate(-50%, -50%) scale(1.15) rotate(3deg); }
@@ -362,6 +367,8 @@ svg { display: block; }
 #banner { position: fixed; left: 0; right: 0; top: 18%; z-index: 19; pointer-events: none; display: flex; justify-content: center; opacity: 0; }
 #banner span { font-size: clamp(60px, 10vw, 128px); color: #fff; -webkit-text-stroke: 12px var(--ink); paint-order: stroke fill; text-shadow: 0 10px 0 var(--ink), 0 20px 40px rgba(0, 0, 0, 0.3); }
 #banner.show { animation: bannerIn 1.4s var(--pop) forwards; }
+#banner.low { top: 64%; }
+#banner.low span { font-size: clamp(44px, 7vw, 92px); -webkit-text-stroke: 10px var(--ink); }
 @keyframes bannerIn { 0% { opacity: 1; transform: scale(3); } 20% { transform: scale(0.9); } 30% { transform: scale(1.05); } 40% { transform: scale(1); } 80% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.4); } }
 
 .card {
@@ -393,10 +400,11 @@ svg { display: block; }
 .stars { display: flex; gap: 14px; align-items: flex-end; }
 .star-col { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .stars .star { width: 84px; height: 84px; fill: #d6dcea; stroke: var(--ink); stroke-width: 3.5; transform: scale(0); }
-.star-col:nth-child(2) .star { width: 104px; height: 104px; margin-bottom: 4px; }
 .star-col.shown .star { animation: starIn 0.45s var(--pop) forwards; }
 .star-col.on .star { fill: #ffd22e; filter: drop-shadow(0 0 12px rgba(255, 210, 46, 0.8)); }
-@keyframes starIn { 0% { transform: scale(0) rotate(-90deg); } 100% { transform: scale(1) rotate(0); } }
+.star-col.miss .star { animation-name: starMiss; fill: #e3e7ef; stroke-width: 3; }
+@keyframes starIn { 0% { transform: scale(0) rotate(-90deg); } 100% { transform: scale(1.12) rotate(0); } }
+@keyframes starMiss { 0% { transform: scale(0) rotate(-90deg); } 100% { transform: scale(0.72) rotate(0); } }
 .res-rows { display: flex; gap: 14px; }
 .res-row { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 18px; border-radius: 22px; background: #eef3fb; border: 4px solid var(--ink); min-width: 118px; }
 .res-row span { font-size: 18px; color: var(--ink-soft); }
@@ -404,6 +412,8 @@ svg { display: block; }
 .record { font-size: 30px; color: #fff; background: linear-gradient(180deg, #ff7a8a, var(--red)); border: 5px solid var(--ink); border-radius: 18px; padding: 6px 22px; transform: rotate(-4deg); box-shadow: 0 5px 0 var(--ink); animation: stamp 0.5s 1.2s var(--pop) both; }
 @keyframes stamp { 0% { transform: rotate(-4deg) scale(3); opacity: 0; } 100% { transform: rotate(-4deg) scale(1); opacity: 1; } }
 .res-best { font-size: 20px; color: var(--ink-soft); min-height: 24px; }
+.gift-pill { font-size: 24px; gap: 8px; animation: stamp 0.5s 1.4s var(--pop) both; }
+.gift-pill .ico { width: 32px; height: 32px; }
 
 #shop .shop-top { position: absolute; top: 20px; left: 24px; right: 24px; display: flex; align-items: center; gap: 18px; animation: slideDown 0.4s var(--pop) both; }
 #shop .shop-top .wallet { margin-left: auto; }
@@ -470,6 +480,10 @@ body.touch .tower { right: 18px; top: 44%; height: 34vh; }
 
 #fade { position: fixed; inset: 0; background: radial-gradient(circle, rgba(31, 42, 68, 0.15) 30%, rgba(31, 42, 68, 0.75) 100%); opacity: 0; pointer-events: none; z-index: 30; transition: opacity 0.1s; }
 #fade.on { opacity: 1; }
+#fade.portal { background: radial-gradient(circle, rgba(200, 255, 74, 0.2) 0%, rgba(40, 70, 40, 0.55) 45%, rgba(20, 30, 40, 0.9) 100%); display: flex; align-items: center; justify-content: center; transition: opacity 0.08s; }
+#fade .fade-ico { width: 0; height: 0; }
+#fade.portal .fade-ico { width: 160px; height: 160px; animation: portalSpin 0.5s ease-out both; }
+@keyframes portalSpin { 0% { transform: scale(0.3) rotate(-120deg); } 100% { transform: scale(1.1) rotate(0); } }
 .keys-help { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
 .keys-help .key, .hint .key { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 18px; background: #eef3fb; border: 4px solid var(--ink); font-size: 24px; }
 .keys-help kbd, .hint kbd { font-family: var(--font); min-width: 40px; height: 40px; padding: 0 8px; border-radius: 10px; background: var(--ink); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 3px 0 #0b1224; }
@@ -519,7 +533,6 @@ body.touch .tower { right: 18px; top: 44%; height: 34vh; }
   .card h2 { font-size: 44px; }
   .res-row { min-width: 92px; padding: 8px 10px; }
   .stars .star { width: 64px; height: 64px; }
-  .star-col:nth-child(2) .star { width: 80px; height: 80px; }
 }
 @media (max-height: 560px) {
   .logo span { font-size: 48px; }
@@ -545,7 +558,6 @@ kbd.wide { min-width: 120px !important; font-size: 26px !important; }
   .result-trophy svg { width: 56px; height: 56px; }
   .card h2 { font-size: 44px; }
   .stars .star { width: 64px; height: 64px; }
-  .star-col:nth-child(2) .star { width: 80px; height: 80px; margin-bottom: 4px; }
   .res-row { padding: 8px 14px; }
   .res-row b { font-size: 28px; }
   .res-best { min-height: 0; }

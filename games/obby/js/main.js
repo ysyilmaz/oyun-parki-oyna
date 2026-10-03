@@ -300,7 +300,7 @@ function resetRun() {
   G.midSpawn = null;
   G.cause = null;
   G.portal = null;
-  document.getElementById('fade').classList.remove('on');
+  document.getElementById('fade').classList.remove('on', 'portal');
   G.bigRun = [];
   G.deaths = 0;
   G.runTime = 0;
@@ -359,7 +359,7 @@ G.play = (id, cpIndex = null, fresh = false, bonus = false) => {
   G.state = 'play';
   showScreen('none');
   G.ui.skip(false);
-  G.ui.banner(bonus ? 'Bonus' : cpIndex === 0 ? G.def.name : 'Bölüm ' + (cpIndex + 1));
+  G.ui.banner(bonus ? 'Bonus' : cpIndex === 0 ? G.def.name : 'Bölüm ' + (cpIndex + 1), cpIndex === 0 && !bonus);
   G.hintOn = G.def.hint && !bonus && !G.save.learned && !input.touchMode;
   if (G.hintOn) G.ui.hint(false);
   else G.ui.hideHint();
@@ -646,12 +646,12 @@ function reachCheckpoint(i, silent) {
   const col = G.def.cpColor;
   for (let k = 0; k < 36; k++) {
     const a = (k / 36) * Math.PI * 2;
-    stars.emit(c.x + Math.cos(a) * 1.9, c.y + 0.2, c.z + Math.sin(a) * 1.9, Math.cos(a) * 1.5, 4 + Math.random() * 4, Math.sin(a) * 1.5, { life: 1, size: 0.6, size1: 0.1, color: k % 2 ? col : 0xffffff, drag: 1.2 });
+    stars.emit(c.x + Math.cos(a) * 1.9, c.y + 0.2, c.z + Math.sin(a) * 1.9, Math.cos(a) * 1.5, 4 + Math.random() * 4, Math.sin(a) * 1.5, { life: 1, size: 0.45, size1: 0.1, color: col, drag: 1.2 });
   }
   G.ui.flyStage(i + 1);
   const words = ['Süper!', 'Harika!', 'Bravo!', 'Aferin!', 'Müthiş!'];
   if (c.chest) openChest(i);
-  else G.ui.toast(words[i % words.length]);
+  else G.ui.toast(words[i % words.length], null, true);
   storeProgress();
   G.persist();
   updateHud();
@@ -672,9 +672,9 @@ function openChest(i) {
   logEvent('reward', { kind: 'chest', value: CHEST, checkpoint: i });
   for (let k = 0; k < 40; k++) {
     const a = Math.random() * Math.PI * 2;
-    stars.emit(ch.x, ch.y + 1, ch.z, Math.cos(a) * 2.5, 5 + Math.random() * 5, Math.sin(a) * 2.5, { life: 1, size: 0.7, size1: 0.1, color: k % 3 ? 0xffd22e : 0xffffff, drag: 1.5, gravity: 6 });
+    stars.emit(ch.x, ch.y + 1, ch.z, Math.cos(a) * 2.5, 5 + Math.random() * 5, Math.sin(a) * 2.5, { life: 1, size: 0.55, size1: 0.1, color: k % 3 ? 0xffd22e : 0xffb000, drag: 1.5, gravity: 6 });
   }
-  glow.emit(ch.x, ch.y + 1, ch.z, 0, 1, 0, { life: 0.6, size: 5, size1: 0.5, color: 0xffc21a });
+  glow.emit(ch.x, ch.y + 1, ch.z, 0, 1, 0, { life: 0.5, size: 2.6, size1: 0.4, color: 0xffa000 });
 }
 
 function finishRun() {
@@ -749,7 +749,7 @@ function enterPortal(pt) {
   G.portal = { pt, t: 0, moved: false };
   p.frozen = true;
   p.vel.set(0, 0, 0);
-  document.getElementById('fade').classList.add('on');
+  document.getElementById('fade').classList.add('on', 'portal');
   audio.whoosh();
   if (!pt.back) logEvent('portal', { out: pt.out, checkpoint: G.cp });
 }
@@ -772,7 +772,7 @@ function stepPortal(dt) {
     else G.secret = { x: to.x, y: to.y, z: to.z };
   }
   if (g.t >= 0.45) {
-    document.getElementById('fade').classList.remove('on');
+    document.getElementById('fade').classList.remove('on', 'portal');
     p.frozen = false;
     G.portal = null;
     G.invuln = 0.6;
@@ -860,6 +860,7 @@ function checkRules() {
     }
   }
   warnBars(pos);
+  G.ui.hazardView(hazardInView());
   const cy = pos.y + 0.9;
   w.coins.forEach((c) => {
     if (c.taken || !collect(c, cy, pos, 1.35)) return;
@@ -916,6 +917,24 @@ function checkRules() {
   }
 }
 
+const hzV = new THREE.Vector3();
+
+function hazardInView() {
+  const w = G.world;
+  if (!w || !w.bars.length) return false;
+  const cam = camera.position;
+  for (const b of w.bars) {
+    if (Math.hypot(b.x - cam.x, b.z - cam.z) > b.len + 16) continue;
+    for (let k = 0; k <= b.arms; k++) {
+      const a = b.angle + (k / Math.max(1, b.arms)) * Math.PI * 2;
+      const r = k === b.arms ? 0 : b.len * 0.6;
+      hzV.set(b.x + Math.cos(a) * r, b.y, b.z - Math.sin(a) * r).project(camera);
+      if (hzV.z < 1 && Math.abs(hzV.x) < 0.45 && hzV.y > -0.5 && hzV.y < 0.75) return true;
+    }
+  }
+  return false;
+}
+
 function warnBars(pos) {
   const TAU = Math.PI * 2;
   for (const b of G.world.bars) {
@@ -957,9 +976,12 @@ function pushOff(b, a) {
   G.pushT = 0.6;
   G.cause = { t: G.runTime, at: new THREE.Vector3(p.pos.x, p.pos.y + 0.6, p.pos.z) };
   b.flash = 1;
-  for (let i = 0; i < 18; i++) {
+  p.hurt();
+  for (let i = 0; i < 10; i++) {
     const a2 = Math.random() * Math.PI * 2;
-    stars.emit(p.pos.x, p.pos.y + 0.9, p.pos.z, Math.cos(a2) * 4, 1 + Math.random() * 3, Math.sin(a2) * 4, { life: 0.9, size: 0.6, size1: 0.1, color: i % 2 ? G.def.hurt : 0xffffff, drag: 2.5 });
+    const ca = Math.cos(a2);
+    const sa = Math.sin(a2);
+    stars.emit(p.pos.x + ca * 0.8, p.pos.y + 0.9, p.pos.z + sa * 0.8, ca * 4, 1 + Math.random() * 2, sa * 4, { life: 0.6, size: 0.35, size1: 0.05, color: G.def.hurt, drag: 2.5 });
   }
   p.vel.x = dir ? dir[0] * 5 : 0;
   p.vel.z = dir ? dir[1] * 5 : 0;

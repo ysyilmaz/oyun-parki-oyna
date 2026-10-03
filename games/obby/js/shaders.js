@@ -206,7 +206,15 @@ export function beamMaterial(color) {
       uniform vec3 color; uniform float time; uniform float strength; uniform vec4 hero; varying vec2 vUv; varying vec3 vW;
       void main(){
         float a = pow(1.0 - vUv.y, 1.6) * strength;
-        a *= 1.0 - hero.w * (1.0 - smoothstep(0.4, 2.6, abs(vW.y - hero.y - 0.9)));
+        vec3 hc = hero.xyz + vec3(0.0, 0.9, 0.0);
+        vec3 hd = hc - cameraPosition;
+        float hl = length(hd);
+        hd /= hl;
+        vec3 rv = vW - cameraPosition;
+        float rs = dot(rv, hd);
+        float sight = (1.0 - smoothstep(0.8, 2.0, length(rv - hd * rs))) * (1.0 - smoothstep(hl + 0.4, hl + 1.6, rs));
+        float band = 1.0 - smoothstep(0.6, 2.8, abs(vW.y - hc.y));
+        a *= 1.0 - hero.w * max(sight, band * step(rs, hl + 1.6));
         float stripes = 0.75 + 0.25 * sin(vUv.y * 30.0 - time * 6.0);
         gl_FragColor = vec4(color * 1.6 * stripes, a * 0.55);
       }

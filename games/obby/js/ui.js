@@ -2,6 +2,7 @@ import { WORLDS } from './themes.js';
 import { SKINS, TRAILS } from './save.js';
 
 const $ = (id) => document.getElementById(id);
+const STALE = 1200;
 const SECRET_ICON = '<svg class="ico sec-ico"><use href="#i-portal"/></svg>';
 
 const ART = {
@@ -234,20 +235,48 @@ export class UI {
     this.pop(document.querySelector('.coin-pill'));
   }
 
-  enqueue(kind, run, ms, drop) {
+  enqueue(kind, run, ms, drop, praise = false) {
     this.q = this.q || [];
-    const same = kind === 'toast' ? this.q.find((it) => it.kind === kind) : null;
-    if (same) same.run = run;
-    else this.q.push({ kind, run, ms, drop });
+    const same = kind === 'toast' || kind === 'stage' ? this.q.find((it) => it.kind === kind) : null;
+    const at = performance.now();
+    if (same) Object.assign(same, { run, at, praise });
+    else this.q.push({ kind, run, ms, drop, praise, at });
     if (!this.qBusy) this.nextQueued();
   }
 
   nextQueued() {
-    const it = this.q.shift();
+    clearTimeout(this.qTimer);
+    const now = performance.now();
+    let it = this.q.shift();
+    while (it && it.kind === 'toast' && (now - it.at > STALE || (it.praise && this.hazard))) it = this.q.shift();
     this.qBusy = !!it;
+    this.qCur = null;
     if (!it) return;
+    this.praiseOn = it.praise;
+    this.qCur = it;
     it.run();
-    this.qTimer = setTimeout(() => this.nextQueued(), it.ms);
+    this.qTimer = setTimeout(() => {
+      this.praiseOn = false;
+      this.nextQueued();
+    }, it.ms);
+  }
+
+  hazardView(on) {
+    if (on === this.hazard) return;
+    this.hazard = on;
+    if (on && this.praiseOn) this.dropToast(true);
+  }
+
+  dropToast(next) {
+    if (!this.qCur || this.qCur.kind !== 'toast') return;
+    const t = $('toast');
+    t.classList.remove('show');
+    t.classList.add('away');
+    this.praiseOn = false;
+    clearTimeout(this.qTimer);
+    this.qCur = null;
+    this.qBusy = false;
+    if (next) this.nextQueued();
   }
 
   clearQueue() {
@@ -255,14 +284,21 @@ export class UI {
     const pending = this.q || [];
     this.q = [];
     this.qBusy = false;
+    this.qCur = null;
+    this.praiseOn = false;
+    this.hazard = false;
     for (const it of pending) if (it.drop) it.drop();
+    if (this.numFade) {
+      this.numFade.cancel();
+      this.numFade = null;
+    }
     if (this.stageFly) {
       this.stageFly = 0;
       this.hudKey = null;
     }
   }
 
-  flyTo(f, goal, scale, ms) {
+  flyTo(f, goal, scale, ms, land = false) {
     const r = goal.getBoundingClientRect();
     const fw = f.offsetWidth;
     const fh = f.offsetHeight;
@@ -276,7 +312,7 @@ export class UI {
         { transform: `translate(${sx}px, ${sy}px) scale(0.5)`, opacity: 1 },
         { transform: `translate(${sx}px, ${sy - 10}px) scale(0.9)`, opacity: 1, offset: 0.15 },
         { transform: `translate(${tx}px, ${ty}px) scale(${k})`, opacity: 1, offset: 0.85 },
-        { transform: `translate(${tx}px, ${ty}px) scale(${k})`, opacity: 0 },
+        { transform: `translate(${tx}px, ${ty}px) scale(${k})`, opacity: land ? 1 : 0 },
       ],
       { duration: ms, easing: 'cubic-bezier(.45,0,.35,1)' },
     );
@@ -310,22 +346,23 @@ export class UI {
     this.pop($('starPill'));
   }
 
-  toast(text, icon) {
+  toast(text, icon, praise = false) {
     this.enqueue('toast', () => {
       const t = $('toast');
       t.textContent = text;
       if (icon) t.insertAdjacentHTML('beforeend', `<svg class="ico toast-ico"><use href="#${icon}"/></svg>`);
-      t.classList.remove('show');
+      t.classList.remove('show', 'away');
       void t.offsetWidth;
       t.classList.add('show');
-    }, 1500);
+    }, 1500, null, praise);
   }
 
-  banner(text) {
+  banner(text, low = false) {
     this.clearQueue();
     this.enqueue('banner', () => {
       const b = $('banner');
       $('bannerText').textContent = text;
+      b.classList.toggle('low', low);
       b.classList.remove('show');
       void b.offsetWidth;
       b.classList.add('show');
@@ -333,13 +370,26 @@ export class UI {
   }
 
   flyStage(n) {
+    this.dropToast(false);
     this.stageFly = n;
     this.hudKey = null;
     this.enqueue('stage', () => {
       const f = $('flyNum');
       const num = $('stageNum');
       f.textContent = n;
-      this.flyTo(f, num, 0, 700).onfinish = () => {
+      if (this.numFade) this.numFade.cancel();
+      this.numFade = num.animate(
+        [
+          { opacity: 1, transform: 'translateY(0) scale(1)' },
+          { opacity: 0, transform: 'translateY(-45%) scale(0.7)' },
+        ],
+        { duration: 130, delay: 150, easing: 'ease-in', fill: 'forwards' },
+      );
+      this.flyTo(f, num, 0, 700, true).onfinish = () => {
+        if (this.numFade) {
+          this.numFade.cancel();
+          this.numFade = null;
+        }
         if (this.stageFly === n) {
           this.stageFly = 0;
           this.hudKey = null;
@@ -369,12 +419,16 @@ export class UI {
 
   results(r) {
     $('resTime').textContent = fmt(r.time);
-    $('resCoins').innerHTML = `${r.coins}/${r.coinsMax}` + (r.secret ? SECRET_ICON + '+' + r.secret : '');
+    $('resCoins').textContent = `${r.coins}/${r.coinsMax}`;
+    $('resSecretRow').classList.toggle('hidden', !r.secret);
+    $('resSecret').textContent = r.secret || 0;
     $('resDeaths').textContent = r.deaths;
     $('resRecord').classList.toggle('hidden', !r.record);
     $('resBest').textContent = r.best ? 'En iyi: ' + fmt(r.best) : '';
     $('nextWorldBtn').classList.toggle('hidden', !r.next);
-    if (r.gifts && r.gifts.length) setTimeout(() => this.toast('Yeni kostüm: ' + r.gifts.join(', ')), 1400);
+    const gift = r.gifts && r.gifts.length ? 'Yeni kostüm: ' + r.gifts.join(', ') : '';
+    $('resGiftT').textContent = gift;
+    $('resGift').classList.toggle('hidden', !gift);
     $('resStars').classList.toggle('hidden', !!r.bonus);
     $('resReward').classList.toggle('hidden', !r.bonus);
     if (r.bonus) {

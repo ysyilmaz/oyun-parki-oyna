@@ -118,7 +118,7 @@ const LOOKS = {
     groundCap: true,
     band: false,
     mushrooms: true,
-    bar: { color: 0xc49a70, emissive: 0xff3020, glow: 0.06, tip: 1.4, tipColor: 0xff5a30, line: 0xa02a18, bark: true, flash: 0.12 },
+    bar: { color: 0xb47e50, emissive: 0x000000, glow: 0, tip: 0, tipColor: 0xc89a66, line: 0xc8202a, lineW: 0.16, edge: 0xd02a2a, bark: true, flash: 0 },
     conveyor: { color: 0x38c8dc, glow: 1.4 },
     gate: ['#6a4a30', '#3f6a3a'],
     grab: 0x38c8dc,
@@ -846,9 +846,12 @@ export class World {
     const g = this.track(new THREE.CylinderGeometry(s.radius, s.radius, s.len, 16, 1));
     g.rotateZ(Math.PI / 2);
     g.translate(s.len / 2, 0, 0);
-    const tg = this.track(new THREE.SphereGeometry(s.radius * 1.35, 16, 12));
-    const lg = f.line ? this.mat('barLineGeo' + s.len, () => new THREE.PlaneGeometry(s.len, 0.7).rotateX(-Math.PI / 2).translate(s.len / 2, 0, 0)) : null;
-    const lm = f.line ? this.mat('barLine', () => new THREE.MeshBasicMaterial({ color: f.line, transparent: true, opacity: 0.55, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 })) : null;
+    const tg = this.track(f.bark ? new THREE.CylinderGeometry(s.radius * 1.01, s.radius * 1.01, 0.08, 16, 1).rotateZ(Math.PI / 2) : new THREE.SphereGeometry(s.radius * 1.35, 16, 12));
+    const lw = f.lineW || 0.7;
+    const lg = f.line ? this.mat('barLineGeo' + s.len + '|' + lw, () => new THREE.PlaneGeometry(s.len, lw).rotateX(-Math.PI / 2).translate(s.len / 2, 0, 0)) : null;
+    const lm = f.line ? this.mat('barLine', () => (f.lineW ? new THREE.MeshBasicMaterial({ color: f.line, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }) : new THREE.MeshBasicMaterial({ color: f.line, transparent: true, opacity: 0.55, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }))) : null;
+    const eg = f.edge ? this.track(new THREE.CylinderGeometry(s.radius * 1.08, s.radius * 1.08, 0.16, 16, 1).rotateZ(Math.PI / 2)) : null;
+    const em = f.edge ? this.mat('barEdge', () => this.std({ color: f.edge, roughness: 0.7 })) : null;
     for (let k = 0; k < s.arms; k++) {
       const arm = new THREE.Group();
       arm.rotation.y = (k / s.arms) * Math.PI * 2;
@@ -856,6 +859,11 @@ export class World {
       const tip = this.addMesh(tg, tipM);
       tip.position.x = s.len;
       arm.add(bar, tip);
+      if (eg) {
+        const edge = this.addMesh(eg, em);
+        edge.position.x = s.len - 0.32;
+        arm.add(edge);
+      }
       if (lg) {
         const line = new THREE.Mesh(lg, lm);
         line.position.y = -0.52;
@@ -950,6 +958,12 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
     this.cps.push(cp);
   }
 
+  heroCut(u, on, x, z, r) {
+    const f = this.focus;
+    const d = f && on ? Math.hypot(f.x - x, f.z - z) : Infinity;
+    u.hero.value.set(f ? f.x : 0, f ? f.y : -1e4, f ? f.z : 0, d < r ? 1 : d < r + 6 ? 0.9 : 0);
+  }
+
   addPortal(s) {
     const g = new THREE.Group();
     g.position.set(s.x, s.y, s.z);
@@ -975,9 +989,10 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
       g.add(b);
       this.statics.add(b);
     }
+    let beamM = null;
     if (s.out) {
-      const beamM = this.track(beamMaterial(PORTAL));
-      beamM.uniforms.strength.value = 1;
+      beamM = this.track(beamMaterial(PORTAL));
+      beamM.uniforms.strength.value = this.def.beamK || 1;
       const beam = new THREE.Mesh(this.track(new THREE.CylinderGeometry(1.5, 1.5, 18, 24, 1, true)), beamM);
       beam.position.y = 9;
       beam.renderOrder = 3;
@@ -985,7 +1000,7 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
       this.shaderMats.push(beamM);
     }
     this.group.add(g);
-    this.portals.push({ x: s.x, y: s.y, z: s.z, to: s.to, out: s.out, view: this.viewOf(s), disc, m, glint });
+    this.portals.push({ x: s.x, y: s.y, z: s.z, to: s.to, out: s.out, view: this.viewOf(s), disc, m, glint, beamM });
   }
 
   addSecretPad(s) {
@@ -1385,7 +1400,7 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
     banner.castShadow = true;
     banner.position.set(x, y + H - 0.7, z);
     this.group.add(banner);
-    const arch = { x, y: y + H - 0.7, z, half: span, mats: [fadeEdge, bannerM], a: 1, pmats: [pm, cm], pa: 1 };
+    const arch = { x, y: y + H - 0.7, z, half: span, banner, mats: [fadeEdge, bannerM], a: 1, pmats: [pm, cm], pa: 1 };
     this.arches = this.arches || [];
     this.arches.push(arch);
   }
@@ -1506,15 +1521,15 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
       let lift = 0;
       if (c.taken) {
         c.t += dt;
-        const k = Math.min(1, c.t / 0.3);
-        s = k < 0.3 ? 1 + k * 1.5 : Math.max(0, 1.45 * (1 - (k - 0.3) / 0.7));
-        lift = k * 1.2;
+        const k = Math.min(1, c.t / 0.22);
+        s = 1 - k;
+        lift = k * 0.8;
       }
       q.setFromAxisAngle(UP, t * 3 + c.phase + (c.taken ? c.t * 30 : 0));
       p.set(c.x, c.y + Math.sin(t * 2.2 + c.phase) * 0.15 + lift, c.z);
       const f = this.focus;
       const away = !f || (p.x - f.x) ** 2 + (p.y - f.y - 0.9) ** 2 + (p.z - f.z) ** 2 > 6.25;
-      const ghost = s > 0 && away && this.hidesPlayer(p.x, p.y, p.z);
+      const ghost = s > 0 && (away || c.taken) && this.hidesPlayer(p.x, p.y, p.z);
       c.hide += ((ghost ? 1 : 0) - c.hide) * Math.min(1, dt * 12);
       const cam = !this.view && this.camera ? this.camera.position : null;
       if (cam && (p.x - cam.x) ** 2 + (p.y - cam.y) ** 2 + (p.z - cam.z) ** 2 < 49) s = 0;
@@ -1842,25 +1857,28 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
         } else u.strength.value = 0;
         cp.beam.visible = u.strength.value > 0.03;
         const f = this.focus;
-        const near = f && cp.beam.visible ? Math.hypot(f.x - cp.x, f.z - cp.z) < (cp.finish ? 3.9 : 2.6) : false;
-        u.hero.value.set(f ? f.x : 0, f ? f.y : -1e4, f ? f.z : 0, near ? 0.85 : 0);
+        this.heroCut(u, cp.beam.visible, cp.x, cp.z, cp.finish ? 3.9 : 2.6);
       }
     }
     for (const f of this.animated) f(t, dt);
     if (this.mushrooms.length) this.updateMushrooms(t);
     if (this.swings.length) this.updateVines(dt);
     for (const pt of this.portals) {
+      if (pt.beamM) this.heroCut(pt.beamM.uniforms, true, pt.x, pt.z, 1.9);
       pt.disc.rotation.z = -t * 1.6;
       pt.m.uniforms.time.value = t;
-      pt.glint.material.opacity = 0.65 + 0.35 * Math.sin(t * 3 + pt.x);
+      const fd = this.focus ? Math.hypot(this.focus.x - pt.x, this.focus.z - pt.z) : 99;
+      pt.glint.material.opacity = (0.65 + 0.35 * Math.sin(t * 3 + pt.x)) * Math.min(1, Math.max(0.2, (fd - 1.5) / 5));
     }
     if (this.arches && this.camera) {
       const c = this.camera.position;
       for (const a of this.arches) {
         const near = !!this.view && Math.abs(c.z - a.z) < 8 && Math.abs(c.x - a.x) < a.half + 3 && c.y < a.y + 2.2;
         const block = !!this.focus && this.archBlocks(a, c, this.focus);
+        const close = Math.abs(c.z - a.z) < 5 && Math.abs(c.x - a.x) < a.half + 2 && c.y < a.y + 4;
         const k = 1 - Math.exp(-12 * dt);
-        a.a += ((near || block || a.label ? 0.12 : 1) - a.a) * k;
+        a.a += ((close ? 0 : near || block || a.label ? 0.12 : 1) - a.a) * (close ? 1 - Math.exp(-24 * dt) : k);
+        a.banner.visible = a.a > 0.02;
         a.pa += ((block ? 0.15 : 1) - a.pa) * k;
         for (const m of a.mats) {
           m.opacity = a.a;

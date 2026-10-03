@@ -286,6 +286,8 @@ export class Player {
     this.inner = new THREE.Group();
     this.root.add(this.inner);
     scene.add(this.root);
+    this.hurtU = { value: 0 };
+    this.hurtT = 0;
     this.mats = {
       Main: new THREE.MeshStandardMaterial({ color: 0xff8a2a, roughness: 0.42, metalness: 0.08 }),
       Grey: new THREE.MeshStandardMaterial({ color: 0xe4e9f2, roughness: 0.38, metalness: 0.3 }),
@@ -455,11 +457,16 @@ export class Player {
     m.onBeforeCompile = (sh) => {
       sh.uniforms.rimColor = m.userData.rim;
       sh.uniforms.rimStrength = m.userData.rimStrength;
-      sh.fragmentShader = 'uniform vec3 rimColor;\nuniform float rimStrength;\n' + sh.fragmentShader.replace(
+      sh.uniforms.hurtK = this.hurtU;
+      sh.fragmentShader = 'uniform vec3 rimColor;\nuniform float rimStrength;\nuniform float hurtK;\n' + sh.fragmentShader.replace(
         '#include <emissivemap_fragment>',
-        '#include <emissivemap_fragment>\n float rimF = pow(1.0 - saturate(dot(normal, normalize(vViewPosition))), 3.0);\n totalEmissiveRadiance += rimColor * rimF * rimStrength;',
+        '#include <emissivemap_fragment>\n float rimF = pow(1.0 - saturate(dot(normal, normalize(vViewPosition))), 3.0);\n totalEmissiveRadiance += rimColor * rimF * rimStrength * (1.0 - hurtK) + vec3(0.32, 0.02, 0.0) * hurtK;\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.85, 0.08, 0.06), hurtK * 0.6);',
       );
     };
+  }
+
+  hurt() {
+    this.hurtT = 0.4;
   }
 
   setRim(color, strength) {
@@ -914,6 +921,8 @@ export class Player {
   }
 
   update(dt, world, t) {
+    if (this.hurtT > 0) this.hurtT = Math.max(0, this.hurtT - dt);
+    this.hurtU.value = this.hurtT > 0 ? Math.sin((this.hurtT / 0.4) * Math.PI) : 0;
     this.sv += (1 - this.sy) * 260 * dt;
     this.sv *= Math.exp(-14 * dt);
     this.sy += this.sv * dt;
