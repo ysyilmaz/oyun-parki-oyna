@@ -426,7 +426,8 @@ export class UI {
   results(r) {
     $('resTime').textContent = fmt(r.time);
     $('resCoins').textContent = `${r.coins}/${r.coinsMax}`;
-    $('resSecretRow').classList.toggle('hidden', !r.secret);
+    $('resSecretRow').classList.toggle('hidden', !r.secret && !r.hasSecret);
+    $('resSecretRow').classList.toggle('missed', !r.secret);
     $('resSecret').textContent = r.secret || 0;
     $('resDeaths').textContent = r.deaths;
     $('resRecord').classList.toggle('hidden', !r.record);

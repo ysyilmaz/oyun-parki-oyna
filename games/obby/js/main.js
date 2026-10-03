@@ -778,6 +778,7 @@ function reachCheckpoint(i, silent) {
     const a = (k / 36) * Math.PI * 2;
     stars.emit(c.x + Math.cos(a) * 1.9, c.y + 0.2, c.z + Math.sin(a) * 1.9, Math.cos(a) * 1.5, 4 + Math.random() * 4, Math.sin(a) * 1.5, { life: 1, size: 0.45, size1: 0.1, color: col, drag: 1.2 });
   }
+  secretCues(i, c);
   G.ui.flyStage(i + 1);
   const words = ['Süper!', 'Harika!', 'Bravo!', 'Aferin!', 'Müthiş!'];
   if (c.chest) openChest(i);
@@ -785,6 +786,33 @@ function reachCheckpoint(i, silent) {
   storeProgress();
   G.persist();
   updateHud();
+}
+
+function secretCues(i, c) {
+  const w = G.world;
+  const list = w.starCue(i);
+  if (list.length) {
+    audio.sparkle();
+    rig.glance = { x: list[0].x, y: list[0].y + 0.6, z: list[0].z, t: 0 };
+    for (const b of list) {
+      for (let k = 0; k < 16; k++) {
+        const a = (k / 16) * Math.PI * 2;
+        stars.emit(b.x, b.y + 0.6, b.z, Math.cos(a) * 2.5, 1 + Math.random() * 2, Math.sin(a) * 2.5, { life: 0.9, size: 0.6, size1: 0.1, color: k % 2 ? 0xff5ad8 : 0xffffff, drag: 1.5 });
+      }
+    }
+  }
+  const pt = w.secretCue(i);
+  if (!pt) return;
+  audio.secretChime();
+  if (list.length) pt.pulse = 5.8;
+  const cp = G.course.cps[i];
+  const r = cp.r || 3.2;
+  const fx = c.x + r - 0.7;
+  const fz = c.z + r - 0.7;
+  for (let k = 0; k < 10; k++) {
+    const s = 0.35 + Math.random() * 0.25;
+    glow.emit(fx, c.y + 2.6, fz, (pt.x - fx) * s, (pt.y + 1.45 - c.y - 2.6) * s + 0.6, (pt.z - fz) * s, { life: 2.2 + k * 0.08, size: 0.5, size1: 0.2, color: G.def.portal ?? 0xc8ff4a, drag: 0.4, gravity: 0 });
+  }
 }
 
 function openChest(i) {
@@ -858,7 +886,7 @@ function finishRun() {
   if (unlocked) logEvent('unlock', { world: next });
   const gifts = grantGifts();
   const sec = secretCoins();
-  G.result = { time: G.runTime, coins: Math.max(0, G.coinsRun - sec), coinsMax: total, secret: sec + (G.secretBonus || 0), deaths: G.deaths, stars: st, got, par, record: record && !!prevBest, best: s.best[id], next: !!next, big: G.bigRun.length, bigMax, gifts };
+  G.result = { time: G.runTime, coins: Math.max(0, G.coinsRun - sec), coinsMax: total, secret: sec + (G.secretBonus || 0), hasSecret: !!G.def.secret, deaths: G.deaths, stars: st, got, par, record: record && !!prevBest, best: s.best[id], next: !!next, big: G.bigRun.length, bigMax, gifts };
   rig.orbitT = Math.atan2(camera.position.x - p.pos.x, camera.position.z - p.pos.z);
 }
 

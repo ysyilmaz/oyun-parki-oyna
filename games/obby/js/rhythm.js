@@ -775,12 +775,14 @@ class Rhythm {
       d.colors.forEach((c, j) => {
         const big = d.s.lampScale || 1;
         const off = (j - (d.colors.length - 1) / 2) * 0.7 * big;
-        _m.compose(_p.set(s.x + off, s.y + 3.1 + (big - 1) * 0.3, s.z + 0.24), _q.identity(), _s.setScalar(vis * big));
-        this.doorLamp.setMatrixAt(li, _m);
         const sw = this.switches.find((x) => x.id === d.ids[j]);
         const lit = sw && sw.pressed && sw.t >= sw.runT;
-        _c.copy(c).multiplyScalar(lit ? 3.4 : 1.1 + 0.3 * Math.sin(t * 3 + j));
+        const pulse = lit ? 1.18 + 0.14 * Math.sin(t * 6 + j) : 0.8;
+        _m.compose(_p.set(s.x + off, s.y + 3.1 + (big - 1) * 0.3, s.z + 0.24), _q.identity(), _s.setScalar(vis * big * pulse));
+        this.doorLamp.setMatrixAt(li, _m);
+        _c.copy(c).multiplyScalar(lit ? 3.6 : 0.22);
         this.doorLamp.setColorAt(li, _c);
+        _c.copy(c).multiplyScalar(lit ? 3.4 : 1.1 + 0.3 * Math.sin(t * 3 + j));
         const band = d.colors.length > 1 ? 1.15 + j * 0.55 : 1.4;
         _m.compose(_p.set(s.x, s.y + band + o * 1.45, s.z + 0.09), _q.identity(), _s.set((s.w - 0.3) * vis * (1 - o), 2.2 * vis * (1 - o) + 0.0001, 0.06 * vis));
         this.bridgeEdge.setMatrixAt(nE + li, _m);

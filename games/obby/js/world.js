@@ -1291,7 +1291,9 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
       this.shaderMats.push(beamM);
     }
     this.group.add(g);
-    this.portals.push({ x: s.x, y: s.y, z: s.z, to: s.to, out: s.out, view: this.viewOf(s), disc, m, glint, beamM });
+    const pt = { x: s.x, y: s.y, z: s.z, to: s.to, out: s.out, view: this.viewOf(s), disc, m, glint, beamM, pulse: 0, cp: -1 };
+    this.portals.push(pt);
+    if (!s.out) this.addLure(s, pt);
   }
 
   addSecretPad(s) {
@@ -1534,28 +1536,54 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
 
   addTakeoff(s) {
     const geo = this.mat('takeoffGeo', () => {
-      const parts = [0, 0.75].map((o) => {
+      const parts = [];
+      for (let k = 0; k < 4; k++) {
+        const o = -k * 1.05;
         const sh = new THREE.Shape();
         sh.moveTo(-0.3 + o, -0.55);
         sh.lineTo(0.2 + o, 0);
         sh.lineTo(-0.3 + o, 0.55);
-        sh.lineTo(-0.05 + o, 0.55);
-        sh.lineTo(0.45 + o, 0);
-        sh.lineTo(-0.05 + o, -0.55);
+        sh.lineTo(-0.02 + o, 0.55);
+        sh.lineTo(0.5 + o, 0);
+        sh.lineTo(-0.02 + o, -0.55);
         sh.closePath();
         const g = new THREE.ShapeGeometry(sh);
         g.deleteAttribute('uv');
-        return g;
-      });
+        g.deleteAttribute('normal');
+        g.setAttribute('k', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count).fill(k), 1));
+        parts.push(g);
+      }
       const m = mergeGeometries(parts, false).rotateX(-Math.PI / 2);
       for (const g of parts) g.dispose();
       return m;
     });
-    const mat = this.mat('takeoffMat', () => new THREE.MeshBasicMaterial({ color: 0xd0208e, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }));
+    const mat = this.mat('takeoffMat', () => {
+      const m = new THREE.ShaderMaterial({
+        uniforms: { time: { value: 0 }, color: { value: new THREE.Color(0xff1493) }, hi: { value: new THREE.Color(0xffe0f4) } },
+        vertexShader: `
+          attribute float k; uniform float time; varying float vP;
+          void main(){
+            vP = smoothstep(0.55, 1.0, fract(time * 0.9 + k * 0.25));
+            vec3 p = position * (1.0 + 0.12 * vP);
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+          }`,
+        fragmentShader: `
+          uniform vec3 color; uniform vec3 hi; varying float vP;
+          void main(){ gl_FragColor = vec4(mix(color, hi, vP), 0.88 + 0.12 * vP); }`,
+        transparent: true,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -4,
+        polygonOffsetUnits: -4,
+      });
+      this.shaderMats.push(m);
+      return m;
+    });
     const m = new THREE.Mesh(geo, mat);
-    m.position.set(s.x, s.y + 0.03, s.z);
+    m.position.set(s.x, s.y + 0.04, s.z);
     m.rotation.y = s.dir > 0 ? 0 : Math.PI;
-    m.scale.setScalar(0.8);
+    m.scale.setScalar(1.5);
+    m.renderOrder = 2;
     this.group.add(m);
   }
 
@@ -1564,25 +1592,99 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
     const star = this.makeStar(0xff5ad8);
     star.scale.setScalar(0.62);
     const halo = new THREE.Sprite(this.mat('haloMat', () => new THREE.SpriteMaterial({ map: TX.sprite('glow'), color: 0xff8ae8, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })));
-    halo.scale.setScalar(3.2);
-    g.add(halo, star);
+    halo.scale.setScalar(4.2);
+    const beacon = new THREE.Sprite(this.track(new THREE.SpriteMaterial({ map: TX.sprite('glow'), color: 0xff7ad8, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending })));
+    beacon.center.set(0.5, 0.08);
+    beacon.scale.set(1.6, 13, 1);
+    g.add(beacon, halo, star);
     g.position.set(s.x, s.y, s.z);
     this.group.add(g);
-    const b = { x: s.x, y: s.y, z: s.z, obj: g, taken: false, t: 0 };
+    const b = { x: s.x, y: s.y, z: s.z, obj: g, taken: false, t: 0, cue: 0 };
     this.bigStars.push(b);
     this.animated.push((t, dt) => {
+      b.cue = Math.max(0, b.cue - dt);
+      const cue = Math.min(1, b.cue);
       if (b.taken) {
         b.t += dt;
         const k = Math.min(1, b.t / 0.5);
         g.scale.setScalar(Math.max(0.001, 1 + k * 0.8 - k * k * 1.8));
-        g.position.y = s.y + k * 2;
+        g.position.y = s.y + 0.6 + k * 2;
         if (k >= 1) g.visible = false;
       } else {
         g.visible = true;
         g.scale.setScalar(1);
-        g.position.y = s.y + Math.sin(t * 2.4) * 0.2;
+        g.position.y = s.y + 0.6 + Math.sin(t * 2.4) * 0.25;
       }
+      star.scale.setScalar(0.62 * (1 + cue * 0.35 * (0.5 + 0.5 * Math.sin(t * 10))));
+      beacon.material.opacity = 0.38 + 0.14 * Math.sin(t * 2.2) + cue * 0.4;
       star.rotation.y = t * 2.2 + (b.taken ? b.t * 20 : 0);
+    });
+  }
+
+  nearestCp(x, z) {
+    let best = -1;
+    let d = Infinity;
+    this.course.cps.forEach((c, i) => {
+      const e = Math.hypot(c.x - x, c.z - z);
+      if (e < d) {
+        d = e;
+        best = i;
+      }
+    });
+    return best;
+  }
+
+  starCue(i) {
+    const list = this.bigStars.filter((b) => !b.taken && this.nearestCp(b.x, b.z) === i);
+    for (const b of list) b.cue = 3;
+    return list;
+  }
+
+  secretCue(i) {
+    const pt = this.portals.find((p) => !p.out && p.cp === i);
+    if (!pt) return null;
+    pt.pulse = 3;
+    return pt;
+  }
+
+  addLure(s, pt) {
+    const ci = this.nearestCp(s.x, s.z);
+    const c = this.course.cps[ci];
+    if (!c) return;
+    pt.cp = ci;
+    const kind = { firefly: ['glow', 0xd8ff6a, true], nota: ['note', 0xfff1b0, true], murekkep: ['drop', 0x2a4cd8, false] }[this.def.secret && this.def.secret.trail] || ['glow', this.def.portal ?? PORTAL, true];
+    const N = 14;
+    const geo = this.track(new THREE.BufferGeometry());
+    const pos = new Float32Array(N * 3);
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const mat = this.track(new THREE.PointsMaterial({ map: TX.sprite(kind[0]), color: kind[1], size: 0.5, sizeAttenuation: true, transparent: true, depthWrite: false, opacity: 0.8, blending: kind[2] ? THREE.AdditiveBlending : THREE.NormalBlending }));
+    const pts = new THREE.Points(geo, mat);
+    pts.frustumCulled = false;
+    pts.renderOrder = 4;
+    this.group.add(pts);
+    const r = c.r || 3.2;
+    const a = { x: c.x + r - 0.7, y: c.y + 2.4, z: c.z + r - 0.7 };
+    const e = { x: s.x, y: s.y + 1.45, z: s.z };
+    const m = { x: (a.x + e.x) / 2 - 0.8, y: Math.max(a.y, e.y) + 0.9, z: (a.z + e.z) / 2 };
+    let ph = 0;
+    this.animated.push((t, dt) => {
+      const f = this.focus;
+      const near = !!f && Math.hypot(f.x - e.x, f.z - e.z) < 30 && Math.abs(f.y - e.y) < 8;
+      pts.visible = near;
+      if (!near) return;
+      const k = Math.min(1, pt.pulse || 0);
+      ph += dt * (0.22 + k * 0.25);
+      mat.size = 0.5 + k * 0.35;
+      mat.opacity = 0.65 + k * 0.35;
+      for (let i = 0; i < N; i++) {
+        const u = (ph + i / N) % 1;
+        const v = 1 - u;
+        const w = Math.sin(t * 2 + i * 1.7) * 0.18;
+        pos[i * 3] = v * v * a.x + 2 * v * u * m.x + u * u * e.x + w;
+        pos[i * 3 + 1] = v * v * a.y + 2 * v * u * m.y + u * u * e.y + Math.cos(t * 2.6 + i) * 0.15;
+        pos[i * 3 + 2] = v * v * a.z + 2 * v * u * m.z + u * u * e.z + w;
+      }
+      geo.attributes.position.needsUpdate = true;
     });
   }
 
@@ -2242,6 +2344,10 @@ diffuseColor *= texture2D( map, bannerFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMa
       pt.m.uniforms.time.value = t;
       const fd = this.focus ? Math.hypot(this.focus.x - pt.x, this.focus.z - pt.z) : 99;
       pt.glint.material.opacity = (0.65 + 0.35 * Math.sin(t * 3 + pt.x)) * Math.min(1, Math.max(0.2, (fd - 1.5) / 5));
+      pt.pulse = Math.max(0, pt.pulse - dt);
+      const pk = Math.min(1, pt.pulse);
+      pt.glint.scale.setScalar(5.5 * (1 + pk * (0.45 + 0.35 * Math.sin(t * 9))));
+      if (pk > 0) pt.glint.material.opacity = Math.max(pt.glint.material.opacity, pk);
     }
     if (this.arches && this.camera) {
       const c = this.camera.position;

@@ -834,6 +834,35 @@ export function sprite(kind) {
       }
       ctx.closePath();
       ctx.fill();
+    } else if (kind === 'note') {
+      const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+      g.addColorStop(0, 'rgba(255,255,255,0.5)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, S, S);
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.ellipse(25, 44, 9, 6.5, -0.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillRect(31, 14, 4, 31);
+      ctx.beginPath();
+      ctx.moveTo(35, 14);
+      ctx.quadraticCurveTo(48, 20, 44, 32);
+      ctx.quadraticCurveTo(44, 24, 35, 24);
+      ctx.fill();
+    } else if (kind === 'drop') {
+      const g = ctx.createRadialGradient(32, 38, 0, 32, 38, 30);
+      g.addColorStop(0, 'rgba(255,255,255,0.45)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, S, S);
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.moveTo(32, 12);
+      ctx.bezierCurveTo(40, 26, 46, 32, 46, 40);
+      ctx.arc(32, 40, 14, 0, Math.PI);
+      ctx.bezierCurveTo(18, 32, 24, 26, 32, 12);
+      ctx.fill();
     } else {
       const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 30);
       g.addColorStop(0, 'rgba(255,255,255,0.95)');

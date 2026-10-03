@@ -26,6 +26,8 @@ const CUE = 0.3;
 const FOLD_WARN = 0.7;
 const _m = new THREE.Matrix4();
 const _m2 = new THREE.Matrix4();
+const _m3 = new THREE.Matrix4();
+const _m4 = new THREE.Matrix4();
 const _p = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _s = new THREE.Vector3();
@@ -224,7 +226,7 @@ function grassShapes(w, h) {
 }
 
 export function makePaper(world) {
-  const keep = new Set(['popgroup', 'popstep', 'foldgroup', 'fold', 'stamp', 'tent', 'edge', 'inkdrop', 'chev']);
+  const keep = new Set(['popgroup', 'popstep', 'foldgroup', 'fold', 'stamp', 'edge', 'inkdrop', 'chev']);
   const specs = world.course.specs.filter((s) => keep.has(s.t));
   const meta = world.course.meta || [];
   const book = meta.some((m) => m && m.book);
@@ -240,7 +242,6 @@ class Paper {
     this.folds = [];
     this.tiles = [];
     this.stamps = [];
-    this.tents = specs.filter((s) => s.t === 'tent');
     this.edges = specs.filter((s) => s.t === 'edge').map((s) => ({ s, view: world.viewOf(s) }));
     this.drops = specs.filter((s) => s.t === 'inkdrop').map((s) => ({ s, view: world.viewOf(s) }));
     this.chevs = specs.filter((s) => s.t === 'chev').map((s) => ({ s, view: world.viewOf(s) }));
@@ -384,7 +385,6 @@ class Paper {
       this.fade.setMatrixAt(i, _m.makeScale(0, 0, 0));
     }
     this.fade.visible = false;
-    if (this.tents.length) this.buildTents();
     if (this.book) this.buildBook();
     this.restyleVines();
   }
@@ -411,33 +411,16 @@ class Paper {
     m.needsUpdate = true;
   }
 
-  buildTents() {
-    const T = (o) => this.w.track(o);
-    const m = T(new THREE.MeshStandardMaterial({ color: 0xa8865e, roughness: 0.9, side: THREE.FrontSide }));
-    for (const s of this.tents) {
-      const parts = [];
-      for (const sd of [-1, 1]) parts.push(new THREE.BoxGeometry(0.08, 3.2, 3.4).rotateZ(sd * 0.55).translate(sd * 0.9, 1.35, 0));
-      const geo = T(mergeGeometries(parts, false));
-      for (const p of parts) p.dispose();
-      const mesh = new THREE.Mesh(geo, m);
-      mesh.position.set(s.x, s.y, s.z);
-      mesh.rotation.y = Math.PI / 2;
-      mesh.scale.set(0.75, 0.6, 0.6);
-      mesh.castShadow = true;
-      this.w.stageGroup(this.w.viewOf(s)).add(mesh);
-    }
-  }
-
   buildBook() {
     const T = (o) => this.w.track(o);
     const bk = this.book;
     const m = T(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 }));
-    this.bookMesh = new THREE.InstancedMesh(T(new THREE.BoxGeometry(1, 1, 1)), m, 2);
+    this.bookMesh = new THREE.InstancedMesh(T(new THREE.BoxGeometry(1, 1, 1)), m, 6);
     this.bookMesh.frustumCulled = false;
     this.bookMesh.castShadow = true;
     this.bookMesh.receiveShadow = true;
     this.group.add(this.bookMesh);
-    [0x6a4a34, 0xf2ece0].forEach((c, i) => this.bookMesh.setColorAt(i, _c.set(c)));
+    [0x6a4a34, 0xf2ece0, 0x8a2e24, 0x8a2e24, 0x7a2820, 0xe8dcc4].forEach((c, i) => this.bookMesh.setColorAt(i, _c.set(c)));
     this.bookMesh.instanceColor.needsUpdate = true;
     bk.layers = [
       { w: 10, h: 4.2, z: 4.8, shape: ridgeShapes, col: 0x5e6a7e },
@@ -621,7 +604,7 @@ class Paper {
   finaleAim() {
     const bk = this.book;
     if (!bk || bk.t < 0) return null;
-    return { x: bk.x - bk.r - 2.4, y: bk.y + 0.7, z: bk.z, yaw: Math.PI / 2 + 0.2, dist: 14, h: 3 };
+    return { x: bk.x - bk.r - 2.4, y: bk.y + 0.7, z: bk.z, yaw: Math.PI / 2 + 0.2, dist: 10, h: 2.4 };
   }
 
   openBook() {
@@ -913,7 +896,17 @@ class Paper {
     _q.setFromAxisAngle(_z, -(1 - e) * Math.PI);
     _m.compose(_p.set(-W / 2, 0.12, 0), _qi, _s.set(W, 0.24, W));
     _m2.compose(_p.set(side, bk.y - 0.05, bk.z), _q, _s.set(1, 1, 1));
+    _m3.copy(_m2);
     this.bookMesh.setMatrixAt(1, _m2.multiply(_m));
+    _m.compose(_p.set(-W / 2 - 0.2, -0.12, 0), _qi, _s.set(W + 0.5, 0.18, W + 0.9));
+    this.bookMesh.setMatrixAt(2, _m2.copy(_m3).multiply(_m));
+    _m.compose(_p.set(side + W / 2 + 0.2, bk.y - 0.2, bk.z), _qi, _s.set(W + 0.5, 0.3, W + 0.9));
+    this.bookMesh.setMatrixAt(3, _m);
+    _q.setFromAxisAngle(_z, Math.PI / 4);
+    _m.compose(_p.set(side, bk.y - 0.25, bk.z), _q, _s.set(0.75, 0.75, W + 0.9));
+    this.bookMesh.setMatrixAt(4, _m);
+    _m4.copy(_m3).multiply(_m.compose(_p.set(-W / 2, -0.02, 0), _qi, _s.set(W - 0.1, 0.16, W + 0.2)));
+    this.bookMesh.setMatrixAt(5, _m4);
     bk.layers.forEach((L, i) => {
       const start = BOOK_OPEN + i * 0.18;
       const u = bk.t < start ? 0 : Math.min(1, (bk.t - start) / 0.35);

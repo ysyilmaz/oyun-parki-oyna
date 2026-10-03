@@ -213,6 +213,16 @@ export class Sound {
     this.tone(hz(n), beat * 3, { type: 'triangle', vol: 0.14, when: len, dest: this.mus });
   }
 
+  sparkle() {
+    [1568, 1976, 2349, 2637].forEach((f, i) => this.tone(f, 0.22, { type: 'sine', vol: 0.05, when: i * 0.06 }));
+    this.noise(0.35, { vol: 0.03, freq: 7000, type: 'highpass', when: 0.05 });
+  }
+
+  secretChime() {
+    this.noise(0.7, { vol: 0.06, freq: 300, slide: 6, type: 'bandpass', q: 1.2 });
+    [784, 988, 1175, 1568].forEach((f, i) => this.tone(f, 0.5, { type: 'sine', vol: 0.05, when: 0.25 + i * 0.12 }));
+  }
+
   whoosh() {
     this.noise(0.3, { vol: 0.08, freq: 500, slide: 4, type: 'bandpass', q: 1.5 });
   }

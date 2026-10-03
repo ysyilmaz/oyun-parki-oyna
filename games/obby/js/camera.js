@@ -24,6 +24,7 @@ export class CameraRig {
     this.lift = 0;
     this.watch = null;
     this.watchK = 0;
+    this.glance = null;
     this.flightK = 0;
   }
 
@@ -33,6 +34,7 @@ export class CameraRig {
   }
 
   snap(pos, yaw = this.yaw) {
+    this.glance = null;
     this.yaw = yaw;
     this.target.set(pos.x, pos.y + 1.4, pos.z);
     this.curDist = this.dist;
@@ -54,6 +56,7 @@ export class CameraRig {
 
   applyLook(look, touch) {
     const sens = touch ? 0.006 : 0.0055;
+    if (look.x) this.glance = null;
     this.yaw -= look.x * sens;
     this.pitch = THREE.MathUtils.clamp(this.pitch + look.y * sens, -0.15, 1.25);
     if (look.zoom) this.distTarget = THREE.MathUtils.clamp(this.distTarget + look.zoom * 1.2, 4.5, 17);
@@ -106,6 +109,13 @@ export class CameraRig {
       this.flightAt.set(aim.x, aim.y + 0.5, aim.z);
     }
     if (this.flightK > 0.01 && this.flightAt) _look.lerp(this.flightAt, this.flightK * 0.45);
+    if (this.glance) {
+      const g = this.glance;
+      g.t += dt;
+      const k = Math.min(1, g.t / 0.5) * Math.min(1, Math.max(0, (2.8 - g.t) / 0.8));
+      _look.lerp(_t.set(g.x, g.y, g.z), k * 0.6);
+      if (g.t > 2.8) this.glance = null;
+    }
     this.applyShake(dt);
     this.cam.lookAt(_look);
     this.updateFov(dt);

@@ -60,7 +60,7 @@ function popupRun(b, { n = 4, size = 3.4, gap = 1.2, zig = 0.6, rise = 0, T = 14
   else b.nextGap = gap;
 }
 
-function foldRun(b, { n = 4, size = 4, gap = 1.2, zig = 0.8, entrySet = 0, moving = [], amp = 1.2, speed = 0.6, pairAt = -1, riseFrom = -1, rise = 0, catchFloor = false, exit = true, dir = null, entry = null, teach = false, relay = false, gap0 = null, exitGap = null } = {}) {
+function foldRun(b, { n = 4, size = 4, gap = 1.2, zig = 0.8, entrySet = 0, moving = [], amp = 1.2, speed = 0.6, pairAt = -1, riseFrom = -1, rise = 0, catchFloor = false, exit = true, dir = null, entry = null, teach = false, relay = false, gap0 = null, exitGap = null, lastReach = 0 } = {}) {
   const id = ++fid;
   const ent = entry || { x: b.x, y: b.y, z: b.z + 4, hx: 3.25, hz: 4 };
   b.add({ t: 'foldgroup', id, entrySet, entry: ent, x: ent.x, y: ent.y, z: ent.z, teach, ...(relay ? { relay } : {}) });
@@ -86,10 +86,11 @@ function foldRun(b, { n = 4, size = 4, gap = 1.2, zig = 0.8, entrySet = 0, movin
     } else {
       const o = { t: 'fold', gid: id, i, set, x: cx, y: top, z: cz, sx: size, sz: size, sy: 0.6 };
       if (moving.includes(i)) o.move = { x: amp, speed, phase: i * 1.3 };
+      if (lastReach && i === n - 1 && !dir) Object.assign(o, { z: cz + lastReach / 2, sz: size + lastReach });
       tiles.push(b.add(o));
       b.coin(cx, top + 1.1, cz);
     }
-    b.arc(px, py, pz, cx - ux * (size / 2), top, cz - uz * (size / 2), 1);
+    b.arc(px, py, pz, cx - ux * (size / 2), top, cz - uz * (size / 2) + (lastReach && i === n - 1 && !dir ? lastReach : 0), 1);
     b.y = top;
     if (dir) {
       b.x = cx + ux * (size / 2);
@@ -238,11 +239,6 @@ function stampLedge(b) {
   b.nextGap = 0;
 }
 
-function tent(b) {
-  const cp = b.cps[b.cps.length - 1];
-  b.add({ t: 'tent', x: cp.x + (cp.r - 1.1), y: cp.y, z: cp.z - 0.6 });
-}
-
 export function inkRoad(b, side, back) {
   const cp = b.cps[b.cps.length - 1];
   const keep = { x: b.x, y: b.y, z: b.z, nextGap: b.nextGap, aimNext: b.aimNext };
@@ -275,10 +271,9 @@ export function inkRoad(b, side, back) {
   b.add({ t: 'portal', x: end.x, y: end.y, z: end.z - 1, yaw: 0, to: back, toCp: b.cps.length, out: true });
   b.secret = false;
   b.add({ t: 'portal', x: cp.x + side * (cp.r - 1.1), y: cp.y, z: cp.z - 0.6, yaw: Math.PI / 2, to: { x: ox, y: oy, z: oz - 2 }, out: false });
-  tent(b);
   for (let k = 0; k < 9; k++) {
     const u = k / 8;
-    b.add({ t: 'inkdrop', x: cp.x + side * (0.6 + u * 1.3 + (k % 2 ? 0.3 : -0.3)), y: cp.y, z: cp.z + 2.8 - u * 3.2, r: 0.36 });
+    b.add({ t: 'inkdrop', x: cp.x + side * (cp.r - 0.9 - u * 0.5 + (k % 2 ? 0.25 : -0.25)), y: cp.y, z: cp.z + cp.r - 0.9 - u * (cp.r + 0.1), r: 0.36 });
   }
   b.stage -= 1;
   Object.assign(b, keep);
@@ -353,7 +348,7 @@ export function paperSeq(h) {
       stairs(b, { n: 3, rise: 0.6, size: 4.4, gap: 1 });
       b.nextGap = 1;
     },
-    (b) => foldRun(b, { n: 6, size: 4.4, gap: 1.8, zig: 1.2, pairAt: 3, riseFrom: 4, rise: 0.3, relay: true, gap0: 1, exitGap: FLUSH }),
+    (b) => foldRun(b, { n: 6, size: 4.4, gap: 1.8, zig: 1.2, pairAt: 3, riseFrom: 4, rise: 0.3, relay: true, gap0: 1, exitGap: FLUSH, lastReach: 0.5 }),
     (b) => {
       b.meta[b.stage] = { camBack: 1.5, book: true };
       popupRun(b, { n: 5, size: 5, gap: 1.0, zig: 0.4, rise: 0.4, T: 20, exit: false });
