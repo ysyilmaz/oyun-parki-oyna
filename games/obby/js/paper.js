@@ -621,7 +621,16 @@ class Paper {
   finaleAim() {
     const bk = this.book;
     if (!bk || bk.t < 0) return null;
-    return { x: bk.x - 2.5, y: bk.y + 0.6, z: bk.z + 1.2, yaw: Math.PI / 2 + 0.5, dist: 14, h: 4.6 };
+    return { x: bk.x - bk.r - 2.4, y: bk.y + 0.7, z: bk.z, yaw: Math.PI / 2 + 0.2, dist: 14, h: 3 };
+  }
+
+  openBook() {
+    if (this.book && this.book.t < 0) this.book.t = 0;
+  }
+
+  bookShown(extra) {
+    const bk = this.book;
+    return !bk || bk.t >= BOOK_OPEN + (bk.layers.length - 1) * 0.18 + 0.35 + extra;
   }
 
   sound(kind) {

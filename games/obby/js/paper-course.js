@@ -60,7 +60,7 @@ function popupRun(b, { n = 4, size = 3.4, gap = 1.2, zig = 0.6, rise = 0, T = 14
   else b.nextGap = gap;
 }
 
-function foldRun(b, { n = 4, size = 4, gap = 1.2, zig = 0.8, entrySet = 0, moving = [], amp = 1.2, speed = 0.6, pairAt = -1, riseFrom = -1, rise = 0, catchFloor = false, exit = true, dir = null, entry = null, teach = false, relay = false, gap0 = null } = {}) {
+function foldRun(b, { n = 4, size = 4, gap = 1.2, zig = 0.8, entrySet = 0, moving = [], amp = 1.2, speed = 0.6, pairAt = -1, riseFrom = -1, rise = 0, catchFloor = false, exit = true, dir = null, entry = null, teach = false, relay = false, gap0 = null, exitGap = null } = {}) {
   const id = ++fid;
   const ent = entry || { x: b.x, y: b.y, z: b.z + 4, hx: 3.25, hz: 4 };
   b.add({ t: 'foldgroup', id, entrySet, entry: ent, x: ent.x, y: ent.y, z: ent.z, teach, ...(relay ? { relay } : {}) });
@@ -100,8 +100,8 @@ function foldRun(b, { n = 4, size = 4, gap = 1.2, zig = 0.8, entrySet = 0, movin
     }
   }
   if (catchFloor && teach) catchUnder(b, tiles, size, ent.z + ent.hz, b.z - 1, ent, 1.2, 4);
-  else if (catchFloor) catchUnder(b, tiles, size, ent.z - ent.hz, b.z, ent);
-  if (exit && !dir) exitPad(b, gap);
+  else if (catchFloor) catchUnder(b, tiles, size, ent.z - ent.hz, b.z, ent, 1.2);
+  if (exit && !dir) exitPad(b, exitGap === null ? gap : exitGap);
   else if (!dir) b.nextGap = gap;
   return tiles;
 }
@@ -168,17 +168,15 @@ function stampHub(b, { layout = 'alcoves', gapLen = 5, hub = 8, gap = 0 } = {}) 
   } else if (layout === 'islands') {
     const W = 5.4;
     const isl = [
-      [-1, 0.9, h.z - 0.2, 7.6, [h.z + 2.0, h.z - 2.4]],
-      [1, 0.9, h.z + 1.0, 3.6, [h.z + 1.2]],
+      [-1, FLUSH, h.z - 0.2, 7.6, [h.z + 2.0, h.z - 2.4]],
+      [1, FLUSH, h.z + 1.0, 3.6, [h.z + 1.2]],
     ];
     let k = 0;
     for (const [side, hop, z, D, zs] of isl) {
       const x = h.x + side * (hub / 2 + hop + W / 2);
       b.block({ x, y: h.y, z, sx: W, sz: D, sy: 1.2, style: 'block', color: b.col(), side: false });
       curbs(b, x, h.y, z, W, D, side, true, true);
-      b.add({ t: 'edge', x: x - side * (W / 2 - 0.05), y: h.y, z, sx: 0.12, sz: D });
-      b.add({ t: 'edge', x: h.x + side * (hub / 2 - 0.05), y: h.y, z, sx: 0.12, sz: D });
-      b.arc(h.x + side * (hub / 2), h.y, z, x, h.y, z, 1, 1.2);
+      b.coin(h.x + side * (hub / 2), h.y + 1.1, z);
       for (const sz of zs) ids.push(stamp(b, x + side * 1.3, h.y, sz, door, k++));
     }
   } else {
@@ -223,7 +221,7 @@ function stampHub(b, { layout = 'alcoves', gapLen = 5, hub = 8, gap = 0 } = {}) 
 }
 
 function stampLedge(b) {
-  const s = island(b, { size: 8, gap: 1.4 });
+  const s = island(b, { size: 8, gap: FLUSH });
   const ax = s.x - 5.5;
   const az = s.z + 1.5;
   b.block({ x: ax, y: s.y, z: az, sx: 3, sz: 3, sy: 1.2, style: 'block', color: b.col() });
@@ -259,7 +257,7 @@ export function inkRoad(b, side, back) {
   b.block({ x: ox, y: oy, z: oz - 3, sx: 6, sz: 6, sy: 1.6, style: 'ground' });
   b.add({ t: 'secretcp', x: ox, y: oy, z: oz - 3 });
   b.z = oz - 6;
-  popupRun(b, { n: 6, size: 3.4, gap: 2.2, zig: 0.8, T: 11 });
+  popupRun(b, { n: 6, size: 3.4, gap: 2.2, zig: 0.8, T: 16 });
   b.nextGap = null;
   foldRun(b, { n: 5, size: 3.6, gap: 2.4, zig: 0.9, entry: { x: b.x, y: b.y, z: b.z + 1.5, hx: 2.2, hz: 1.5 } });
   const hub = b.ahead(1.4, 6, 6, { style: 'ground', sy: 1.4 });
@@ -320,30 +318,30 @@ export function paperSeq(h) {
       steps(b, { n: 2, size: 4.6, gap: 1.2, rise: 0.3, zig: 0.8, gate: true });
       bridge(b, { len: 10, w: 3 });
     },
-    (b) => popupRun(b, { n: 4, size: 4.8, gap: 1.4, zig: 0.6, T: 14, catchFloor: true }),
+    (b) => popupRun(b, { n: 4, size: 4.8, gap: 1.4, zig: 0.6, T: 16, catchFloor: true }),
     (b) => steps(b, { n: 3, size: 5, gap: 1.2, rise: 0.4, zig: 1.0 }),
-    (b) => foldRun(b, { n: 4, size: 5, gap: 1.2, zig: 0.8, catchFloor: true, teach: true }),
-    (b) => foldRun(b, { n: 5, size: 4.6, gap: 1.6, zig: 1.0 }),
+    (b) => foldRun(b, { n: 4, size: 5, gap: 1.2, zig: 0.8, catchFloor: true, teach: true, exitGap: FLUSH }),
+    (b) => foldRun(b, { n: 5, size: 4.6, gap: 1.6, zig: 1.0, exitGap: FLUSH }),
     (b) => tramps(b, { n: 2, r: 2.2, zig: 0.4, spacing: 4.6, lead: 0.6 }),
     (b) => disks(b, { n: 3, r: 3, spin: 0.45, gap: 1.4 }),
-    (b) => popupRun(b, { n: 6, size: 4.6, gap: 1.6, zig: 0.35, rise: 0.3, T: 19 }),
+    (b) => popupRun(b, { n: 6, size: 4.6, gap: 1.3, zig: 0.35, rise: 0.3, T: 24 }),
     (b) => stampHub(b, { layout: 'alcoves', gapLen: 5 }),
     (b) => bridge(b, { len: 12, w: 3 }),
     (b) => sideMovers(b, { n: 3, amp: 1.6, speed: 0.8, size: 4, gap: 1.6 }),
-    (b) => foldRun(b, { n: 5, size: 4.6, gap: 1.6, zig: 0.6, moving: [1, 3], amp: 1.2, speed: 0.6, catchFloor: true }),
+    (b) => foldRun(b, { n: 5, size: 4.6, gap: 1.6, zig: 0.6, moving: [1, 3], amp: 1.2, speed: 0.6, catchFloor: true, exitGap: FLUSH }),
     (b) => {
       conveyor(b, { len: 12, w: 4.5, dir: 'z-', speed: 2, gap: 1.2 });
       island(b, { size: 6, gap: FLUSH });
     },
-    (b) => stampHub(b, { layout: 'islands', gapLen: 5, gap: 1.2, hub: 10 }),
+    (b) => stampHub(b, { layout: 'islands', gapLen: 5, gap: FLUSH, hub: 10 }),
     (b) => {
       crumble(b, { n: 4, size: 4.6, gap: 1.5, delay: 1.0 });
-      foldRun(b, { n: 3, size: 4.6, gap: 1.4, zig: 0.6, entry: { x: b.x, y: b.y, z: b.z + 2.3, hx: 2.3, hz: 2.3 } });
+      foldRun(b, { n: 3, size: 4.6, gap: 1.4, zig: 0.6, exitGap: FLUSH, entry: { x: b.x, y: b.y, z: b.z + 2.3, hx: 2.3, hz: 2.3 } });
     },
     (b) => stampLedge(b),
     (b) => {
-      popupRun(b, { n: 4, size: 4.8, gap: 1.4, zig: 0.6, T: 14, exitLen: 6 });
-      foldRun(b, { n: 3, size: 4.6, gap: 1.6, zig: 0.8, entry: { x: b.x, y: b.y, z: b.z + 3, hx: 2.2, hz: 3 } });
+      popupRun(b, { n: 4, size: 4.8, gap: 1.4, zig: 0.6, T: 16, exitLen: 6 });
+      foldRun(b, { n: 3, size: 4.6, gap: 1.6, zig: 0.8, exitGap: FLUSH, entry: { x: b.x, y: b.y, z: b.z + 3, hx: 2.2, hz: 3 } });
     },
     (b) => {
       barBeam(b, { len: 12, w: 2.2, bars: 2, speed: 1.0, floor: 4, push: true });
@@ -355,10 +353,10 @@ export function paperSeq(h) {
       stairs(b, { n: 3, rise: 0.6, size: 4.4, gap: 1 });
       b.nextGap = 1;
     },
-    (b) => foldRun(b, { n: 6, size: 4.4, gap: 1.8, zig: 1.2, pairAt: 3, riseFrom: 4, rise: 0.3, relay: true, gap0: 1 }),
+    (b) => foldRun(b, { n: 6, size: 4.4, gap: 1.8, zig: 1.2, pairAt: 3, riseFrom: 4, rise: 0.3, relay: true, gap0: 1, exitGap: FLUSH }),
     (b) => {
       b.meta[b.stage] = { camBack: 1.5, book: true };
-      popupRun(b, { n: 6, size: 4.6, gap: 1.2, zig: 0.6, rise: 0.6, T: 18, exit: false });
+      popupRun(b, { n: 5, size: 5, gap: 1.0, zig: 0.4, rise: 0.4, T: 20, exit: false });
       b.nextGap = FLUSH;
       b.finishDy = 0;
     },

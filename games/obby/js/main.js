@@ -815,7 +815,10 @@ function finishRun() {
   p.vel.set(0, 0, 0);
   p.animOverride = 'Dance';
   audio.win();
-  if (G.world.paper && G.world.paper.book) audio.crescendo(2);
+  if (G.world.paper && G.world.paper.book) {
+    audio.crescendo(2);
+    G.world.paper.openBook();
+  }
   const c = G.course.cps[G.cp];
   confetti.burst(c.x, c.y + 2, c.z, 160, 11, 1, G.def.confetti || FINISH_CONFETTI);
   G.ui.toast('BİTİŞ!');
@@ -1161,6 +1164,18 @@ const _pa = new THREE.Vector3();
 const _pb = new THREE.Vector3();
 const _fin = new THREE.Vector3();
 
+function menuSide(dist) {
+  const box = document.querySelector('#menu .menu-left');
+  const cards = document.getElementById('worldCards');
+  if (!box || !cards) return 2.6;
+  let right = 0;
+  for (const el of box.children) right = Math.max(right, el.getBoundingClientRect().right);
+  right = Math.max(right, cards.getBoundingClientRect().left + cards.scrollWidth);
+  const W = window.innerWidth;
+  const perPx = (2 * dist * Math.tan((camera.fov * Math.PI) / 360)) / window.innerHeight;
+  return Math.max(2.6, ((right + W) / 2 - W / 2) * perPx);
+}
+
 function markArchesUnderLabel() {
   const r = G.ui.labelRect();
   const w = window.innerWidth;
@@ -1270,7 +1285,7 @@ function stateStep(dt) {
     G.finishT += dt;
     if (G.finishT > 0.8 && G.finishT - dt <= 0.8) confetti.burst(p.pos.x - 2, p.pos.y + 3, p.pos.z, 100, 9, 1, G.def.confetti || FINISH_CONFETTI);
     if (G.finishT > 1.6 && G.finishT - dt <= 1.6) confetti.burst(p.pos.x + 2, p.pos.y + 3, p.pos.z, 100, 9, 1, G.def.confetti || FINISH_CONFETTI);
-    if (G.finishT > 2.8 && G.finishT - dt <= 2.8) {
+    if (G.finishT > 2.8 && (!G.world.paper || G.world.paper.bookShown(1.5))) {
       G.state = 'results';
       p.animOverride = 'ThumbsUp';
       showScreen('results');
@@ -1335,7 +1350,7 @@ function frame() {
   } else if (G.state === 'menu' || G.state === 'shop' || G.state === 'loading') {
     const wide = window.innerWidth > 820;
     if (G.state === 'shop') rig.orbit(dt, p.pos, 5.2, 1.7, 0.18, wide ? -2.1 : 0);
-    else rig.orbit(dt, p.pos, 7, 2.3, 0.14, wide ? 2.6 : 0);
+    else rig.orbit(dt, p.pos, 7, 2.3, 0.14, wide ? menuSide(7.1) : 0);
     p.face = p.faceTarget = Math.atan2(camera.position.x - p.pos.x, camera.position.z - p.pos.z);
   }
   if (G.state !== 'paused') {
