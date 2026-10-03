@@ -284,6 +284,12 @@ class Rhythm {
     inlayG.setAttribute('gIdx', new THREE.InstancedBufferAttribute(gi, 1));
     this.inlay = inst(inlayG, inlayM, this.tiles.length + this.switches.length);
     this.inlay.renderOrder = 3;
+    const fillM = T(new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+    this.fill = inst(T(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2)), fillM, this.tiles.length);
+    this.fill.receiveShadow = false;
+    this.fill.renderOrder = 2;
+    this.fillOn = glowColor(0xffffff, 0.95);
+    this.fillFrozen = glowColor(0xb89cff, 0.6);
 
     const postG = T(new THREE.CylinderGeometry(0.07, 0.09, 1.25, 8).translate(0, 0.62, 0));
     const brass = T(new THREE.MeshStandardMaterial({ color: 0xb58a46, metalness: 0.75, roughness: 0.32 }));
@@ -324,6 +330,23 @@ class Rhythm {
     this.gearG = T(this.gearGeo(0.42, 10));
     this.doorGear = inst(this.gearG, brass, this.doors.length);
 
+    this.arrows = [];
+    this.doors.forEach((d) => {
+      for (const [x0, z0, x1, z1] of d.s.arrows || []) {
+        const L = Math.hypot(x1 - x0, z1 - z0);
+        const n = Math.max(2, Math.round(L / 0.9));
+        const yaw = Math.atan2(x1 - x0, z1 - z0);
+        for (let k = 0; k < n; k++) {
+          const f = (k + 0.5) / n;
+          this.arrows.push({ d, k, x: x0 + (x1 - x0) * f, y: d.s.y + 0.02, z: z0 + (z1 - z0) * f, yaw });
+        }
+      }
+    });
+    const chev = [-1, 1].map((sx) => new THREE.BoxGeometry(0.62, 0.03, 0.17).rotateY(sx * 0.7).translate(sx * 0.21, 0, -0.18));
+    const chevG = T(mergeGeometries(chev, false));
+    for (const c of chev) c.dispose();
+    this.arrowM = inst(chevG, T(new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false })), this.arrows.length);
+    this.arrowM.receiveShadow = false;
     const brG = blockGeo(1, 1, 1, 0.08, 1);
     this.bridgeM = T(new THREE.MeshStandardMaterial({ color: 0x9a6a48, roughness: 0.5, vertexColors: true }));
     this.bridge = inst(brG, this.bridgeM, this.bridges.length, true);
@@ -582,6 +605,7 @@ class Rhythm {
       sw.t = 0;
       sw.sink = 0;
       sw.off = 0;
+      sw.again = false;
     }
     for (const b of this.bridges) {
       b.e = 0;
@@ -599,6 +623,35 @@ class Rhythm {
     for (const l of this.lamps) l.lit = 0;
   }
 
+  placeArrows(t) {
+    this.arrows.forEach((a, i) => {
+      const vis = this.on(a.d.view) ? 1 : 0;
+      const open = a.d.open > 0;
+      _q.setFromAxisAngle(_p.set(0, 1, 0), a.yaw);
+      const k = open ? 1.15 : 0.9;
+      _m.compose(_p.set(a.x, a.y, a.z), _q, _s.set(k * vis, vis, k * vis));
+      this.arrowM.setMatrixAt(i, _m);
+      const beat = open ? Math.max(0, Math.sin(t * 6 - a.k * 1.1)) : 0;
+      this.arrowM.setColorAt(i, _c.copy(this.beatC).multiplyScalar(open ? 1.4 + 2.2 * beat : 0.22));
+    });
+    this.arrowM.instanceMatrix.needsUpdate = true;
+    if (this.arrowM.instanceColor) this.arrowM.instanceColor.needsUpdate = true;
+  }
+
+  respawned() {
+    for (const sw of this.switches) {
+      if (!sw.freeze) continue;
+      const g = this.groups.find((x) => x.id === sw.target);
+      if (!g || !(sw.pressed || g.armed || g.frozen > 0)) continue;
+      g.armed = false;
+      g.frozen = 0;
+      sw.pressed = false;
+      sw.t = 0;
+      sw.off = 0;
+      sw.again = true;
+    }
+  }
+
   update(t, dt) {
     if (this.placed !== this.w.window) this.placeStatic();
     const anyT = this.tiles.some((x) => this.on(x.view));
@@ -607,11 +660,14 @@ class Rhythm {
     const anyB = this.bridges.some((x) => this.on(x.view));
     const anyF = this.fences.some((x) => x.k > 0.01 && this.on(x.g.view));
     this.body.visible = anyT;
+    this.fill.visible = anyT;
     this.inlay.visible = anyT || anyS;
     this.post.visible = anyF;
     this.bar.visible = anyF;
     for (const im of [this.swRim, this.swCap, this.lampM, this.strip]) im.visible = anyS;
     for (const im of [this.doorFrame, this.lintel, this.shutter, this.doorLamp, this.doorGear]) im.visible = anyD;
+    this.arrowM.visible = anyD && this.arrows.length > 0;
+    if (this.arrowM.visible) this.placeArrows(t);
     this.bridge.visible = anyB;
     this.bridgeEdge.visible = anyB || anyD || this.freezeTiles.some((t) => this.on(t.view) && (t.g.armed || t.g.frozen > 0));
     const ke = 1 - Math.exp(-14 * dt);
@@ -631,13 +687,17 @@ class Rhythm {
       this.inlay.setMatrixAt(i, _m);
       const g = tl.g;
       const frozen = g.armed || g.frozen > 0;
-      let glow = tl.on ? 3.0 : 0.55;
+      let glow = tl.on ? 2.9 : 0.55;
       if (tl.warn > 0) glow = 0.6 + 2.0 * (0.5 + 0.5 * Math.cos(tl.warn * Math.PI * 3));
       else if (!tl.on && tl.pre > 0) glow = 0.55 + 1.5 * tl.pre * tl.pre;
       if (frozen && g.frozen > 0 && g.frozen < 2) glow *= 0.65 + 0.35 * Math.cos(g.frozen * Math.PI * 2);
       if (g.flash > 0) glow += 3.5 * (g.flash / 0.7);
       _c.copy(frozen ? violet : this.beatC).multiplyScalar(frozen ? glow * 1.3 : glow);
       this.inlay.setColorAt(i, _c);
+      const lit = tl.on ? (tl.warn > 0 ? 0.35 + 0.65 * (0.5 + 0.5 * Math.cos(tl.warn * Math.PI * 3)) : 1) : 0;
+      _m.compose(_p.set(s.x, tl.top + 0.006 - sink, s.z), _q.identity(), _s.set(s.sx * 0.97 * k * vis * (lit > 0 ? 1 : 0), 1, s.sz * 0.97 * k * vis * (lit > 0 ? 1 : 0)));
+      this.fill.setMatrixAt(i, _m);
+      this.fill.setColorAt(i, _c.copy(frozen ? this.fillFrozen : this.fillOn).multiplyScalar(lit));
       if (frozen !== tl.frozenLook) {
         tl.frozenLook = frozen;
         this.body.setColorAt(i, _c.set(frozen ? frost : BODY[tl.set % BODY.length]));
@@ -646,12 +706,16 @@ class Rhythm {
     });
     this.body.instanceMatrix.needsUpdate = true;
     this.inlay.instanceMatrix.needsUpdate = true;
+    this.fill.instanceMatrix.needsUpdate = true;
+    if (this.fill.instanceColor) this.fill.instanceColor.needsUpdate = true;
     const nT = this.tiles.length;
     this.switches.forEach((sw, i) => {
       const vis = this.on(sw.view) ? 1 : 0;
-      _m.compose(_p.set(sw.s.x, sw.s.y + 0.13 - sw.sink * 0.1, sw.s.z), _q.identity(), _s.setScalar(vis));
+      if (sw.pressed) sw.again = false;
+      const beat = sw.again ? Math.max(0, Math.sin(t * 7)) : 0;
+      _m.compose(_p.set(sw.s.x, sw.s.y + 0.13 - sw.sink * 0.1, sw.s.z), _q.identity(), _s.set(vis * (1 + 0.3 * beat), vis, vis * (1 + 0.3 * beat)));
       this.swCap.setMatrixAt(i, _m);
-      const idle = 0.55 + 0.2 * Math.sin(t * 4 + i);
+      const idle = sw.again ? 0.9 + 2.2 * beat : 0.55 + 0.2 * Math.sin(t * 4 + i);
       const under = this.w.player && Math.hypot(this.w.player.pos.x - sw.s.x, this.w.player.pos.z - sw.s.z) < 1.6 && Math.abs(this.w.player.pos.y - sw.s.y) < 2.5;
       _c.copy(sw.color).multiplyScalar(sw.pressed ? (under ? 1.8 : 3.4) : idle);
       this.swCap.setColorAt(i, _c);

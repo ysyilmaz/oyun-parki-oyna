@@ -79,7 +79,9 @@ function twoSwitch(b, { gapLen = 5, lockA = 'cyan', lockB = 'violet' } = {}) {
   const ib = ++sid;
   b.add({ t: 'switch', id: ib, lock: lockB, x: R.x, y: R.y, z: R.z, rail: rail([[R.x - 1, R.y, R.z], [R.x - 1.7, R.y, R.z], [hub.x + 3, hub.y, R.z], [hub.x + 0.7, hub.y, R.z - 0.5], [hub.x + 0.7, hub.y, edge + 0.6]]) });
   b.coin(R.x, R.y + 1.1, R.z);
-  b.add({ t: 'door', ids: [ia, ib], lock: [lockA, lockB], x: hub.x, y: hub.y, z: edge - 0.16, w: 6 });
+  for (const I of [L, R]) b.block({ x: I.x, y: I.y + 1, z: I.z - 1.55, sx: 5, sz: 0.5, sy: 1.4, style: 'curb' });
+  const toDoor = (sx) => [hub.x + sx * 3.4, hub.z + 0.6, hub.x + sx * 0.9, edge + 1.1];
+  b.add({ t: 'door', ids: [ia, ib], lock: [lockA, lockB], x: hub.x, y: hub.y, z: edge - 0.16, w: 6, arrows: [toDoor(-1), toDoor(1)] });
   b.add({ t: 'xbridge', id: ia, lock: lockA, x: hub.x, y: hub.y, z: edge - gapLen / 4, sx: 2.8, sz: gapLen / 2 + 0.1, sy: 0.5 });
   b.add({ t: 'xbridge', id: ib, lock: lockB, x: hub.x, y: hub.y, z: edge - (gapLen * 3) / 4, sx: 2.8, sz: gapLen / 2 + 0.1, sy: 0.5 });
   b.coin(hub.x, hub.y + 1.1, edge - gapLen / 2);
@@ -175,7 +177,7 @@ export function gearSeq(h) {
       bridge(b, { len: 10, w: 3 });
     },
     (b) => gate(b, { len: 8, w: 4, gapLen: 5.2, lock: 'cyan' }),
-    (b) => steps(b, { n: 3, size: 4, gap: 2, rise: 0.4, zig: 1.2 }),
+    (b) => steps(b, { n: 3, size: 4, gap: 1.6, rise: 0.3, zig: 0.8 }),
     (b) => beats(b, { n: 4, size: 4, gap: 1.6, mode: 'wait', ew: 6.5, catchFloor: true }),
     (b) => beats(b, { n: 4, size: 3.8, gap: 1.8, mode: 'clock', ew: 6.5, catchFloor: true }),
     (b) => tramps(b, { n: 2, r: 2.2, zig: 0.4, spacing: 4.6, lead: 0.6 }),
@@ -198,7 +200,7 @@ export function gearSeq(h) {
       island(b, { size: 8, gap: 1.4 });
       b.nextGap = FLUSH;
     },
-    (b) => disks(b, { n: 2, r: 3.4, spin: 0.35, gap: 2 }),
+    (b) => disks(b, { n: 2, r: 3.4, spin: 0.25, gap: 1.2 }),
     (b) => {
       barBeam(b, { len: 14, w: 2.2, bars: 2, speed: 1.0, floor: 4, push: true });
       b.nextGap = FLUSH;

@@ -4,7 +4,8 @@ import { STORM_LOOK } from './storm.js';
 import { makeRhythm } from './rhythm.js';
 import { makeTrain } from './train.js';
 import { CLOCK_LOOK } from './clockwork.js';
-import { blockGeo, diskGeo, vertexGradient } from './geo.js';
+import { blockGeo, diskGeo, vertexGradient, kitBox, kitUv } from './geo.js';
+import { kitReady, kitPart, kitMulti, kitPiece, kitTexture } from './kit.js';
 import * as TX from './textures.js';
 import { lavaMaterial, beamMaterial, portalMaterial, nearFade, nearDim, glowColor } from './shaders.js';
 import { buildDecor } from './decor.js';
@@ -31,6 +32,66 @@ const _va = new THREE.Vector3();
 const _vb = new THREE.Vector3();
 const _vd = new THREE.Vector3();
 const GO = new THREE.Color(0x3ddc5a);
+
+const FACE_SLOT = (x, y, z) => {
+  const l = Math.hypot(x, y, z) || 1;
+  if (y / l > 0.9) return 2;
+  if (y / l < -0.9) return 3;
+  if (Math.abs(x) >= Math.abs(z)) return x > 0 ? 0 : 1;
+  return z > 0 ? 4 : 5;
+};
+const LOOK_HEAD = `uniform float kitSide;
+uniform float kitWear;
+varying float vKitW;
+varying vec3 vKitP;
+varying vec3 vKitN;
+float kitHash(vec2 p) {
+  p = fract(p * vec2(0.3183099, 0.3678794) + 0.1);
+  p *= 17.0;
+  return fract(p.x * p.y * (p.x + p.y));
+}
+float kitNoise(vec2 x) {
+  vec2 i = floor(x);
+  vec2 f = fract(x);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(kitHash(i), kitHash(i + vec2(1.0, 0.0)), f.x), mix(kitHash(i + vec2(0.0, 1.0)), kitHash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+`;
+const LOOK_FRAG = `#include <color_fragment>
+ diffuseColor.rgb *= mix(kitSide, 1.0, smoothstep(0.35, 0.8, vKitN.y)) * (1.0 + 0.05 * sin(vKitP.x * 0.41 + 1.3) * sin(vKitP.z * 0.33 + 0.4)) * (1.0 + 0.1 * vKitW);
+ if (vKitW > 0.02) {
+  float kitChip = smoothstep(0.5, 0.68, vKitW + (kitNoise(vKitP.xz * 3.3 + vKitP.y * 2.1) - 0.5) * 0.8) * kitWear;
+  float kitL = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+  diffuseColor.rgb = mix(diffuseColor.rgb, mix(vec3(kitL), diffuseColor.rgb, 0.7) * 1.2 + 0.05, kitChip);
+ }`;
+
+function lookChunk(sh, u) {
+  sh.uniforms.kitSide = u.kitSide;
+  sh.uniforms.kitWear = u.kitWear;
+  sh.vertexShader = `attribute float kitW;
+varying float vKitW;
+varying vec3 vKitP;
+varying vec3 vKitN;
+${sh.vertexShader.replace(
+    '#include <project_vertex>',
+    `#include <project_vertex>
+ vKitW = kitW;
+ vKitP = transformed;
+ vKitN = normalize(mat3(modelMatrix) * objectNormal);`,
+  )}`;
+  sh.fragmentShader = LOOK_HEAD + sh.fragmentShader.replace('#include <color_fragment>', LOOK_FRAG);
+}
+
+const RING_OFF = 0x8fa6c8;
+const RING_OFF_K = 0.35;
+const RING_ON = 4.2;
+const RING_FINISH = 3.4;
+
+function soften(col) {
+  const c = new THREE.Color(col);
+  const l = c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722;
+  return c.lerp(new THREE.Color(l, l, l), 0.12).getHex();
+}
 
 function oneGroup(g) {
   g.clearGroups();
@@ -167,7 +228,9 @@ export const LOOKS = {
 };
 
 export class World {
-  constructor(scene, def, course) {
+  constructor(scene, def, course, ao = null) {
+    this.ao = ao;
+    this.aoMats = new Map();
     this.scene = scene;
     this.def = def;
     this.course = course;
@@ -194,6 +257,8 @@ export class World {
     this.nextCp = 1;
     this.help = def.help;
     this.look = LOOKS[def.look];
+    this.kitU = { kitSide: { value: this.look.kitSide ?? 0.84 }, kitWear: { value: this.look.kitWear ?? 1 } };
+    this.kitLooks = new Map();
     this.padFx = [];
     this.swings = [];
     this.lastStage = course.specs.reduce((m, s) => (s.secret ? m : Math.max(m, s.stage || 0)), 0);
@@ -208,11 +273,11 @@ export class World {
     this.statics = new Set();
     this.batches = [];
     this.window = null;
-    this.beamOn = new THREE.Color(def.cpColor);
+    this.beamOn = new THREE.Color(def.beamColor ?? def.cpColor);
     this.stopA = new THREE.Color(def.waitStrip[0]);
     this.stopB = new THREE.Color(def.waitStrip[1]);
     this.beamNext = new THREE.Color(0xffc21a);
-    this.beamFinish = new THREE.Color(0xfff2cc);
+    this.beamFinish = new THREE.Color(0xffcf6a);
     this.buildCourse();
     this.buildCoins();
     this.wind = makeWind(this);
@@ -399,8 +464,8 @@ export class World {
       return m;
     };
     const H = {
-      studTop: (col) => tint('studTop', col, { map: TX.studTop(), roughness: 0.48, metalness: 0.02 }),
-      studSide: (col) => tint('studSide', col, { map: TX.studSide(), roughness: 0.55 }),
+      studTop: (col) => (kitTexture('studAlbedo') ? tint('studTopKit', soften(col), { map: kitTexture('studAlbedo'), normalMap: kitTexture('studNormal'), roughness: 0.48, metalness: 0.02 }) : tint('studTop', col, { map: TX.studTop(), roughness: 0.48, metalness: 0.02 })),
+      studSide: (col) => tint('studSide', kitTexture('studAlbedo') ? soften(col) : col, { map: TX.studSide(), roughness: 0.55 }),
       metal: (col) => tint('metal', col, { map: TX.metal(), roughness: 0.4, metalness: 0.45 }),
       neon: (col) => this.mat('neon' + col, () => S({ map: TX.darkPanel(), color: 0xb8c0e8, emissiveMap: TX.neonPanel(), emissive: col, emissiveIntensity: 2.4, roughness: 0.35, metalness: 0.3 })),
       darkSide: () => this.mat('darkSide', () => S({ map: TX.darkPanel(), color: 0x9aa4d8, roughness: 0.4, metalness: 0.3 })),
@@ -509,7 +574,7 @@ export class World {
       });
       const geo = this.track(mergeGeometries(pieces, false));
       for (const pc of pieces) pc.dispose();
-      const mesh = new THREE.Mesh(geo, b.mat);
+      const mesh = new THREE.Mesh(geo, this.aoLook(b.mat));
       mesh.castShadow = b.cast;
       mesh.receiveShadow = true;
       sg.add(mesh);
@@ -609,7 +674,90 @@ export class World {
     return [out, uniq.length === 1 ? uniq[0] : uniq];
   }
 
+  aoLook(m) {
+    const ao = this.ao;
+    if (!ao || !m.isMeshStandardMaterial) return m;
+    let c = this.aoMats.get(m);
+    if (c) return c;
+    c = this.track(m.clone());
+    const prev = m.onBeforeCompile;
+    const key = m.customProgramCacheKey();
+    c.onBeforeCompile = (sh, r) => {
+      prev.call(m, sh, r);
+      sh.uniforms.aoTex = ao.tex;
+      sh.uniforms.aoRect = ao.rect;
+      sh.uniforms.aoStrength = ao.strength;
+      sh.vertexShader = 'varying vec3 vAoW;\nvarying float vAoUp;\n' + sh.vertexShader.replace(
+        '#include <project_vertex>',
+        '#include <project_vertex>\n vAoW = (modelMatrix * vec4(transformed, 1.0)).xyz;\n vAoUp = normalize(mat3(modelMatrix) * objectNormal).y;',
+      );
+      sh.fragmentShader = 'uniform sampler2D aoTex;\nuniform vec4 aoRect;\nuniform float aoStrength;\nvarying vec3 vAoW;\nvarying float vAoUp;\n' + sh.fragmentShader.replace(
+        '#include <color_fragment>',
+        '#include <color_fragment>\n float aoV = texture2D(aoTex, (vAoW.xz - aoRect.xy) / aoRect.zw).r;\n diffuseColor.rgb *= mix(1.0, aoV, aoStrength * smoothstep(0.55, 0.85, vAoUp));',
+      );
+    };
+    c.customProgramCacheKey = () => key + '|kitao';
+    c.userData = {};
+    this.aoMats.set(m, c);
+    return c;
+  }
+
+  kitLook(m) {
+    if (!m.isMeshStandardMaterial || !m.vertexColors) return m;
+    let c = this.kitLooks.get(m);
+    if (c) return c;
+    c = this.track(m.clone());
+    const prev = m.onBeforeCompile;
+    const key = m.customProgramCacheKey();
+    const u = this.kitU;
+    c.onBeforeCompile = (sh, r) => {
+      prev.call(m, sh, r);
+      lookChunk(sh, u);
+    };
+    c.customProgramCacheKey = () => key + '|kitlook';
+    c.userData = {};
+    if (m.userData.tint) c.userData.tint = { base: this.kitLook(m.userData.tint.base), color: m.userData.tint.color };
+    this.kitLooks.set(m, c);
+    return c;
+  }
+
+  kitGeo(name, sx, sy, sz, radius, tile) {
+    const tpl = kitReady() && kitPart(name + '_0');
+    if (!tpl) return blockGeo(sx, sy, sz, name === 'grassCap' ? 0.2 : radius, tile);
+    const k = name === 'block' ? Math.min(radius, sy * 0.45, sx * 0.45, sz * 0.45) / kitPiece('block').rt : 1;
+    const g = kitBox(tpl, name, sx, sy, sz, k, tile);
+    if (!g.index) this.faceGroups(g);
+    return g;
+  }
+
+  faceGroups(g) {
+    const nor = g.attributes.normal;
+    const n = nor.count;
+    const slots = [[], [], [], [], [], []];
+    for (let t = 0; t < n; t += 3) {
+      let x = 0;
+      let y = 0;
+      let z = 0;
+      for (let k = 0; k < 3; k++) {
+        x += nor.getX(t + k);
+        y += nor.getY(t + k);
+        z += nor.getZ(t + k);
+      }
+      slots[FACE_SLOT(x, y, z)].push(t, t + 1, t + 2);
+    }
+    const idx = new (n > 65535 ? Uint32Array : Uint16Array)(n);
+    let o = 0;
+    slots.forEach((list, i) => {
+      if (!list.length) return;
+      idx.set(list, o);
+      g.addGroup(o, list.length, i);
+      o += list.length;
+    });
+    g.setIndex(new THREE.BufferAttribute(idx, 1));
+  }
+
   addMesh(geo, mats, cast = true) {
+    if (geo.attributes.kitW) mats = Array.isArray(mats) ? mats.map((m) => this.kitLook(m)) : this.kitLook(mats);
     if (Array.isArray(mats) && geo.groups.length > 1) [geo, mats] = this.coalesce(geo, mats);
     const m = new THREE.Mesh(geo, mats);
     m.castShadow = cast;
@@ -623,15 +771,16 @@ export class World {
     obj.position.set(s.x, cy, s.z);
     obj.rotation.y = s.yaw || 0;
     if (s.style === 'ground' && this.look.groundCap) {
-      const body = this.addMesh(blockGeo(s.sx, s.sy - 0.3, s.sz, 0.3, 2.5), this.styleMats('ground', 0, 'box', s)[0]);
+      const body = this.addMesh(this.kitGeo('groundBody', s.sx, s.sy - 0.3, s.sz, 0.3, 2.5), this.styleMats('ground', 0, 'box', s)[0]);
       body.position.y = -0.15;
-      const cap = this.addMesh(blockGeo(s.sx + 0.26, 0.44, s.sz + 0.26, 0.2, 2.5), this.styleMats('ground', 0, 'box', s)[2]);
+      const ov = (kitPiece('grassCap') || { overhang: 0.13 }).overhang * 2;
+      const cap = this.addMesh(this.kitGeo('grassCap', s.sx + ov, 0.44, s.sz + ov, 0.2, 2.5), this.styleMats('ground', 0, 'box', s)[2]);
       cap.position.y = s.sy / 2 - 0.22;
       obj.add(body, cap);
       if (this.isStatic(s)) this.statics.add(body).add(cap);
     } else {
       const tile = s.style === 'ground' || s.style === 'stone' ? 2.5 : s.style === 'conveyor' ? 1.6 : 2;
-      const mesh = this.addMesh(blockGeo(s.sx, s.sy, s.sz, s.style === 'beam' || s.style === 'curb' ? 0.14 : 0.24, tile), this.styleMats(s.style, s.color, 'box', s));
+      const mesh = this.addMesh(this.kitGeo('block', s.sx, s.sy, s.sz, s.style === 'beam' || s.style === 'curb' ? 0.14 : 0.24, tile), this.styleMats(s.style, s.color, 'box', s));
       obj.add(mesh);
       if (this.isStatic(s)) this.statics.add(mesh);
       if (this.look.band && (s.style === 'block' || s.style === 'mover' || s.style === 'plank')) {
@@ -652,6 +801,28 @@ export class World {
 
   padLook() {
     return this.def.pad || { top: 0x39425e, idle: 0x9fb4d8, idleK: 0.5, onK: 0.9 };
+  }
+
+  ringLook() {
+    const pd = this.padLook();
+    const k = pd.ringK ?? pd.onK / 0.9;
+    return { off: pd.ringOff ?? RING_OFF, offK: pd.ringOffK ?? RING_OFF_K, on: RING_ON * k, finish: RING_FINISH * k };
+  }
+
+  postGeo(H) {
+    return this.mat('gatePostGeo' + H, () => {
+      const g = kitUv(kitMulti('gatePost'), 1, true);
+      const top = kitPiece('gatePost').size[1];
+      const pos = g.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const y = pos.getY(i);
+        if (y > top - 0.4) pos.setY(i, y + H - top);
+        else if (y > 0.58) pos.setY(i, 0.58 + ((y - 0.58) * (H - 0.4 - 0.58)) / (top - 0.4 - 0.58));
+      }
+      g.computeBoundingBox();
+      g.computeBoundingSphere();
+      return g;
+    });
   }
 
   landed(x, y, z) {
@@ -982,40 +1153,55 @@ export class World {
     const g = new THREE.Group();
     g.position.set(s.x, s.y, s.z);
     const pd = this.padLook();
-    const padTop = this.track(this.std({ color: pd.top, emissiveMap: TX.ring(), emissive: finish ? 0xffc21a : pd.idle, emissiveIntensity: finish ? 1.2 : pd.idleK, roughness: 0.4 }));
-    const padSide = this.mat('padSide', () => this.std({ color: 0xe8eef8, roughness: 0.4, vertexColors: true }));
-    const pad = this.addMesh(diskGeo(finish ? 3.2 : 2, 0.2, 0.08, 4), [padTop, padSide], false);
-    const uv = pad.geometry.attributes.uv;
-    const pos = pad.geometry.attributes.position;
-    const nor = pad.geometry.attributes.normal;
-    const R = finish ? 3.2 : 2;
-    if (!pad.geometry.userData.ringUv) {
-      for (let i = 0; i < pos.count; i++) if (nor.getY(i) > 0.75) uv.setXY(i, pos.getX(i) / (R * 2) + 0.5, -pos.getZ(i) / (R * 2) + 0.5);
-      uv.needsUpdate = true;
-      pad.geometry.userData.ringUv = true;
+    const kitPad = kitReady() && this.mat(finish ? 'padFinishGeo' : 'padGeo', () => kitMulti(finish ? 'padFinish' : 'pad'));
+    let pad;
+    let padTop;
+    if (kitPad) {
+      const rl = this.ringLook();
+      padTop = this.track(this.std({ color: finish ? 0xffe2a0 : rl.off, emissive: finish ? 0xffc21a : rl.off, emissiveIntensity: finish ? rl.finish : rl.offK, roughness: 0.35, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 }));
+      const tint = pd.kitTint || [1, 1, 1];
+      const padBody = this.mat('padBody', () => this.std({ color: new THREE.Color().setRGB(tint[0], tint[1], tint[2]), roughness: 0.56, vertexColors: true }));
+      pad = this.addMesh(kitPad, [padTop, padBody], false);
+    } else {
+      padTop = this.track(this.std({ color: pd.top, emissiveMap: TX.ring(), emissive: finish ? 0xffc21a : pd.idle, emissiveIntensity: finish ? 1.2 : pd.idleK, roughness: 0.4 }));
+      const padSide = this.mat('padSide', () => this.std({ color: 0xe8eef8, roughness: 0.4, vertexColors: true }));
+      pad = this.addMesh(diskGeo(finish ? 3.2 : 2, 0.2, 0.08, 4), [padTop, padSide], false);
+      const uv = pad.geometry.attributes.uv;
+      const pos = pad.geometry.attributes.position;
+      const nor = pad.geometry.attributes.normal;
+      const R = finish ? 3.2 : 2;
+      if (!pad.geometry.userData.ringUv) {
+        for (let i = 0; i < pos.count; i++) if (nor.getY(i) > 0.75) uv.setXY(i, pos.getX(i) / (R * 2) + 0.5, -pos.getZ(i) / (R * 2) + 0.5);
+        uv.needsUpdate = true;
+        pad.geometry.userData.ringUv = true;
+      }
+      pad.position.y = -0.08;
     }
-    pad.position.y = -0.08;
     g.add(pad);
     const cp = { index: s.index, x: s.x, y: s.y, z: s.z, group: g, padTop, active: s.index === 0, finish, pop: 0, flag: null, beam: null };
     if (!finish) {
       const side = (this.course.cps[s.index] && this.course.cps[s.index].r) || 3.2;
-      const pole = this.addMesh(this.mat('poleKnobGeo', () => this.poleKnobGeo()), this.mat('poleKnob', () => this.poleKnobMat()));
+      const kitPole = kitReady() && this.mat('poleKitGeo', () => kitMulti('pole'));
+      const pole = kitPole
+        ? this.addMesh(kitPole, [this.mat('poleKit', () => this.std({ color: 0xf2f4f8, roughness: 0.3, metalness: 0.6, vertexColors: true })), this.mat('knobKit', () => this.std({ color: 0xffc21a, emissive: 0xffa000, emissiveIntensity: 0.6, metalness: 0.5, roughness: 0.3, vertexColors: true }))])
+        : this.addMesh(this.mat('poleKnobGeo', () => this.poleKnobGeo()), this.mat('poleKnob', () => this.poleKnobMat()));
       pole.position.set(side - 0.7, 0, side - 0.7);
       this.statics.add(pole);
-      const flagGeo = this.track(new THREE.PlaneGeometry(1.7, 1.05, 12, 4));
-      flagGeo.translate(0.85, 0, 0);
+      const kitFlag = kitReady() && kitPart('flag_0');
+      const flagGeo = this.track(kitFlag ? kitFlag.clone() : new THREE.PlaneGeometry(1.7, 1.05, 12, 4));
+      if (kitFlag) {
+        flagGeo.deleteAttribute('color');
+        flagGeo.deleteAttribute('kitW');
+      } else flagGeo.translate(0.85, 0, 0);
       const texOff = this.track(TX.flag(s.index + 1, false));
       const texOn = this.track(TX.flag(s.index + 1, true, this.def.flagOn));
       const flagM = this.track(this.std({ map: texOff, side: THREE.DoubleSide, roughness: 0.7, forceSinglePass: true }));
       flagM.onBeforeCompile = (sh) => {
-        sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#ifdef FLIP_SIDED
-bool flagFront = !gl_FrontFacing;
-#else
-bool flagFront = gl_FrontFacing;
-#endif
+        sh.vertexShader = 'varying vec3 vFlagN;\n' + sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n vFlagN = (modelViewMatrix * vec4(0.0, 0.0, 1.0, 0.0)).xyz;');
+        sh.fragmentShader = 'varying vec3 vFlagN;\n' + sh.fragmentShader.replace('#include <map_fragment>', `bool flagFront = dot(vFlagN, vViewPosition) > 0.0;
 diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapUv.y ) );`);
       };
-      flagM.customProgramCacheKey = () => 'flag3';
+      flagM.customProgramCacheKey = () => 'flag4';
       const flag = new THREE.Mesh(flagGeo, flagM);
       flag.castShadow = true;
       flag.position.set(side - 0.7, 2.95, side - 0.7);
@@ -1041,9 +1227,11 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
       });
       cp.star = star;
     }
-    const beamM = this.track(beamMaterial(0xffc21a));
-    const R2 = finish ? 3.4 : 2.1;
-    const beam = new THREE.Mesh(this.track(new THREE.CylinderGeometry(R2, R2, finish ? 30 : 16, 32, 1, true)), beamM);
+    const soft = !!this.def.beamSoft;
+    const beamM = this.track(beamMaterial(0xffc21a, soft));
+    const R2 = soft ? (finish ? 2 : 1.25) : finish ? 3.4 : 2.1;
+    if (soft) beamM.uniforms.radius.value = R2;
+    const beam = new THREE.Mesh(this.track(new THREE.CylinderGeometry(soft ? R2 * 0.55 : R2, R2, finish ? 30 : 16, 32, 1, true)), beamM);
     beam.position.y = finish ? 15 : 8;
     beam.renderOrder = 3;
     g.add(beam);
@@ -1508,12 +1696,18 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
     const cm = this.track(edgeM.clone());
     for (const m of [pm, cm]) m.transparent = true;
     for (const sx of [-span, span]) {
-      const p = this.addMesh(blockGeo(0.9, H, 0.9, 0.3, 1), pm);
-      p.position.set(x + sx, y + H / 2, z);
-      this.group.add(p);
-      const cap = this.addMesh(this.mat('archCapGeo', () => oneGroup(diskGeo(0.7, 0.5, 0.2).clone())), cm);
-      cap.position.set(x + sx, y + H + 0.2, z);
-      this.group.add(cap);
+      if (kitReady()) {
+        const p = this.addMesh(this.postGeo(H), [pm, cm]);
+        p.position.set(x + sx, y, z);
+        this.group.add(p);
+      } else {
+        const p = this.addMesh(blockGeo(0.9, H, 0.9, 0.3, 1), pm);
+        p.position.set(x + sx, y + H / 2, z);
+        this.group.add(p);
+        const cap = this.addMesh(this.mat('archCapGeo', () => oneGroup(diskGeo(0.7, 0.5, 0.2).clone())), cm);
+        cap.position.set(x + sx, y + H + 0.2, z);
+        this.group.add(cap);
+      }
       this.colliders.push({ shape: 'box', x: x + sx, y: y + H / 2, z, hx: 0.45, hy: H / 2, hz: 0.45, yaw: 0, dx: 0, dy: 0, dz: 0, dyaw: 0, active: true, surface: null, kill: false, power: 0 });
     }
     const bgeo = this.track(new THREE.BoxGeometry(span * 2 - 0.9, 1.5, 0.35));
@@ -1522,9 +1716,36 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
     bgeo.addGroup(24, 12, 4);
     const fadeEdge = this.track(edgeM.clone());
     for (const m of [fadeEdge, bannerM]) m.transparent = true;
-    const banner = new THREE.Mesh(bgeo, [fadeEdge, fadeEdge, fadeEdge, fadeEdge, bannerM, bannerM]);
-    banner.castShadow = true;
-    banner.position.set(x, y + H - 0.7, z);
+    let banner;
+    if (kitReady()) {
+      bgeo.dispose();
+      bannerM.side = THREE.DoubleSide;
+      bannerM.forceSinglePass = true;
+      bannerM.vertexColors = true;
+      bannerM.onBeforeCompile = (sh) => {
+        sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#ifdef FLIP_SIDED
+bool bannerFront = !gl_FrontFacing;
+#else
+bool bannerFront = gl_FrontFacing;
+#endif
+diffuseColor *= texture2D( map, bannerFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapUv.y ) );`).replace('#include <emissivemap_fragment>', 'totalEmissiveRadiance *= texture2D( emissiveMap, bannerFront ? vEmissiveMapUv : vec2( 1.0 - vEmissiveMapUv.x, vEmissiveMapUv.y ) ).rgb;');
+      };
+      bannerM.customProgramCacheKey = () => 'banner2';
+      const cloth = this.mat('bannerClothGeo', () => kitPart('bannerCloth_0').clone());
+      const rod = this.mat('bannerRodGeo', () => kitUv(kitPart('bannerRod_0').clone(), 1));
+      fadeEdge.vertexColors = true;
+      banner = new THREE.Group();
+      const cm2 = new THREE.Mesh(cloth, bannerM);
+      const rm = new THREE.Mesh(rod, fadeEdge);
+      cm2.castShadow = true;
+      rm.castShadow = true;
+      banner.add(cm2, rm);
+      banner.position.set(x, y + H - 0.05, z);
+    } else {
+      banner = new THREE.Mesh(bgeo, [fadeEdge, fadeEdge, fadeEdge, fadeEdge, bannerM, bannerM]);
+      banner.castShadow = true;
+      banner.position.set(x, y + H - 0.7, z);
+    }
     this.group.add(banner);
     const arch = { x, y: y + H - 0.7, z, half: span, finish, banner, mats: [fadeEdge, bannerM], a: 1, pmats: [pm, cm], pa: 1 };
     this.arches = this.arches || [];
@@ -1678,7 +1899,8 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
       cp.flagM.needsUpdate = true;
     }
     cp.padTop.emissive.set(this.def.cpColor);
-    cp.padTop.emissiveIntensity = this.padLook().onK;
+    if (kitReady()) cp.padTop.color.set(this.def.cpColor).multiplyScalar(0.25);
+    cp.padTop.emissiveIntensity = kitReady() ? this.ringLook().on : this.padLook().onK;
     cp.pop = silent ? 0 : 1;
     cp.beamT = silent ? 1 : 0;
   }
@@ -1695,8 +1917,10 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
         cp.flagM.map = cp.texOff;
         cp.flagM.needsUpdate = true;
       }
-      cp.padTop.emissive.set(this.padLook().idle);
-      cp.padTop.emissiveIntensity = this.padLook().idleK;
+      const rl = this.ringLook();
+      cp.padTop.emissive.set(kitReady() ? rl.off : this.padLook().idle);
+      if (kitReady()) cp.padTop.color.set(rl.off);
+      cp.padTop.emissiveIntensity = kitReady() ? rl.offK : this.padLook().idleK;
       cp.beamT = 0;
     }
   }
@@ -1967,8 +2191,8 @@ diffuseColor *= texture2D( map, flagFront ? vMapUv : vec2( 1.0 - vMapUv.x, vMapU
         for (let i = 0; i < pos.count; i++) {
           const x = base[i * 3];
           const y = base[i * 3 + 1];
-          const w = Math.sin(x * 3 - t * 6 + cp.index) * 0.12 * (x / 1.7);
-          pos.setXYZ(i, x, y - (x / 1.7) * 0.06 * (1 + Math.sin(t * 3)), w);
+          const w = Math.sin(x * 3 - t * 6 + cp.index) * 0.1 * (x / 1.7);
+          pos.setXYZ(i, x, y - (x / 1.7) * 0.05 * (1 + Math.sin(t * 3)), base[i * 3 + 2] + w);
         }
         pos.needsUpdate = true;
         g.computeVertexNormals();

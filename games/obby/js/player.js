@@ -1,7 +1,38 @@
 import * as THREE from 'three';
 import { PHYS, FULL_HELP } from './levels.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import * as TX from './textures.js';
+
+let ROBOT = null;
+
+export async function loadRobot(url = 'assets/robot.glb') {
+  if (!ROBOT) ROBOT = await new GLTFLoader().loadAsync(url);
+  return ROBOT;
+}
+
+const LN2X4 = 4 * Math.LN2;
+
+function damp(s, goal, halflife, dt) {
+  const y = LN2X4 / (halflife + 1e-5) / 2;
+  const j0 = s.x - goal;
+  const j1 = s.v + j0 * y;
+  const e = Math.exp(-y * dt);
+  s.x = e * (j0 + j1 * dt) + goal;
+  s.v = e * (s.v - j1 * y * dt);
+  return s.x;
+}
+
+function wobble(s, goal, k, c, dt) {
+  s.v += ((goal - s.x) * k - s.v * c) * dt;
+  s.x += s.v * dt;
+  return s.x;
+}
+
+const CODE_POSES = new Set(['Climb', 'Death', 'Dance', 'Wave', 'ThumbsUp', 'Yes']);
+const _q = new THREE.Quaternion();
+const _e = new THREE.Euler();
 
 const COYOTE = 0.14;
 const BUFFER = 0.14;
@@ -289,20 +320,11 @@ export class Player {
     scene.add(this.root);
     this.hurtU = { value: 0 };
     this.hurtT = 0;
-    this.mats = {
-      Main: new THREE.MeshStandardMaterial({ color: 0xff8a2a, roughness: 0.42, metalness: 0.08 }),
-      Grey: new THREE.MeshStandardMaterial({ color: 0xe4e9f2, roughness: 0.38, metalness: 0.3 }),
-      Black: new THREE.MeshStandardMaterial({ color: 0x1b2340, roughness: 0.18, metalness: 0.35 }),
-    };
-    for (const m of Object.values(this.mats)) {
-      m.envMapIntensity = 1.1;
-      this.addRim(m);
-    }
-    this.eyeM = new THREE.MeshBasicMaterial({ color: new THREE.Color(0x8ff8ff).multiplyScalar(1.6) });
-    this.tipM = new THREE.MeshStandardMaterial({ color: 0xffd22e, emissive: 0xffb000, emissiveIntensity: 1.2, roughness: 0.3 });
-    this.model = this.buildChibi();
+    this.mats = { Main: new THREE.MeshStandardMaterial({ color: 0xff8a2a, roughness: 0.42, metalness: 0.08, vertexColors: true }) };
+    this.mats.Main.envMapIntensity = 1.1;
+    this.addRim(this.mats.Main);
+    this.model = this.buildRobot();
     this.inner.add(this.model);
-    this.addOutline(this.model);
     this.pose = blankPose();
     this.prevPose = blankPose();
     this.animT = 0;
@@ -354,73 +376,65 @@ export class Player {
     return m;
   }
 
-  buildChibi() {
-    const { Main, Grey, Black } = this.mats;
-    const model = new THREE.Group();
-    const hips = new THREE.Group();
-    hips.position.y = 0.5;
-    model.add(hips);
-    const body = new THREE.Group();
-    hips.add(body);
-    this.part(rbox(0.64, 0.52, 0.46, 0.17), Main, 0, 0.26, 0, body);
-    this.part(rbox(0.36, 0.24, 0.08, 0.04), Grey, 0, 0.25, 0.21, body);
-    this.part(new THREE.SphereGeometry(0.045, 12, 8), this.tipM, 0, 0.27, 0.255, body).userData.noHull = true;
-    this.part(rbox(0.68, 0.1, 0.5, 0.05), Grey, 0, 0.03, 0, body);
-    const head = new THREE.Group();
-    head.position.y = 0.5;
-    body.add(head);
-    this.part(rbox(0.8, 0.68, 0.72, 0.24), Main, 0, 0.36, 0, head);
-    this.part(rbox(0.62, 0.4, 0.1, 0.13), Black, 0, 0.35, 0.33, head);
-    const eyeG = new THREE.SphereGeometry(1, 16, 12);
-    const earG = new THREE.CylinderGeometry(0.11, 0.11, 0.08, 20);
-    this.eyes = [];
-    for (const sx of [-1, 1]) {
-      const e = this.part(eyeG, this.eyeM, sx * 0.13, 0.38, 0.385, head);
-      e.scale.set(0.07, 0.095, 0.03);
-      e.castShadow = false;
-      e.userData.noHull = true;
-      this.eyes.push(e);
-      this.part(earG, Grey, sx * 0.43, 0.36, 0, head).rotation.z = Math.PI / 2;
-    }
-    const smile = this.part(new THREE.TorusGeometry(0.07, 0.016, 6, 16, Math.PI), this.eyeM, 0, 0.27, 0.385, head);
-    smile.rotation.z = Math.PI;
-    smile.castShadow = false;
-    smile.userData.noHull = true;
-    this.antenna = new THREE.Group();
-    head.add(this.antenna);
-    this.part(new THREE.CylinderGeometry(0.028, 0.028, 0.2, 8), Grey, 0, 0.78, 0, this.antenna);
-    this.part(new THREE.SphereGeometry(0.075, 14, 10), this.tipM, 0, 0.9, 0, this.antenna).userData.noHull = true;
-    const limb = (x, y, isArm) => {
-      const pivot = new THREE.Group();
-      pivot.position.set(x, y, 0);
-      if (isArm) {
-        this.part(rbox(0.17, 0.34, 0.19, 0.07), Main, 0, -0.16, 0, pivot);
-        this.part(new THREE.SphereGeometry(0.1, 16, 12), Grey, 0, -0.36, 0.01, pivot);
-      } else {
-        this.part(rbox(0.21, 0.36, 0.24, 0.08), Grey, 0, -0.17, 0, pivot);
-        this.part(rbox(0.25, 0.15, 0.34, 0.07), Black, 0, -0.43, 0.04, pivot);
-      }
-      return pivot;
-    };
-    const armL = limb(0.4, 0.43, true);
-    const armR = limb(-0.4, 0.43, true);
-    body.add(armL, armR);
-    const legL = limb(0.15, 0, false);
-    const legR = limb(-0.15, 0, false);
-    hips.add(legL, legR);
-    this.rig = { hips, body, head, armL, armR, legL, legR };
+  buildRobot() {
+    const model = cloneSkinned(ROBOT.scene);
+    let body = null;
+    let glow = null;
     model.traverse((o) => {
-      if (o.isMesh) {
-        o.receiveShadow = false;
-        o.frustumCulled = false;
-      }
+      if (!o.isSkinnedMesh) return;
+      if (o.material.name === 'Glow') glow = o;
+      else body = o;
     });
+    body.material = this.mats.Main;
+    body.castShadow = true;
+    body.receiveShadow = false;
+    glow.material = new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(1.6, 1.6, 1.6) });
+    glow.material.onBeforeCompile = (sh) => {
+      sh.fragmentShader = sh.fragmentShader.replace('#include <color_fragment>', 'diffuseColor.rgb *= vColor.rgb;');
+    };
+    glow.material.customProgramCacheKey = () => 'robotGlow';
+    glow.castShadow = false;
+    glow.receiveShadow = false;
+    const hull = new THREE.SkinnedMesh(smoothNormals(body.geometry.clone()), this.outlineMaterial());
+    hull.bind(body.skeleton, body.bindMatrix);
+    hull.renderOrder = -1;
+    hull.userData.hull = true;
+    body.parent.add(hull);
+    for (const o of [body, glow, hull]) o.frustumCulled = false;
+    const bone = (n) => model.getObjectByName(n);
+    this.rig = { hips: bone('hips'), body: bone('body'), head: bone('head'), armL: bone('armL'), armR: bone('armR'), legL: bone('legL'), legR: bone('legR') };
+    this.antenna = bone('antenna');
+    this.eyes = [bone('eyeL'), bone('eyeR')];
+    this.bones = [];
+    model.traverse((o) => {
+      if (o.isBone) this.bones.push([o, o.position.clone(), o.quaternion.clone(), o.scale.clone()]);
+    });
+    this.mixer = new THREE.AnimationMixer(model);
+    this.clips = {};
+    for (const clip of ROBOT.animations) {
+      const a = this.mixer.clipAction(clip);
+      if (clip.name === 'jump' || clip.name === 'land') {
+        a.setLoop(THREE.LoopOnce, 1);
+        a.clampWhenFinished = true;
+      }
+      a.setEffectiveWeight(clip.name === 'idle' ? 1 : 0);
+      a.play();
+      this.clips[clip.name] = a;
+    }
+    this.clipW = { idle: 1, run: 0, jump: 0, air: 0, land: 0, fall: 0 };
+    this.codeW = 0;
+    this.takeoffT = 9;
+    this.landT = 9;
+    this.airVis = 0;
+    this.wasGroundedVis = true;
+    this.prevVel = new THREE.Vector3();
+    this.spr = { lean: { x: 0, v: 0 }, roll: { x: 0, v: 0 }, headX: { x: 0, v: 0 }, headY: { x: 0, v: 0 }, antX: { x: 0, v: 0 }, antZ: { x: 0, v: 0 }, acc: { x: 0, v: 0 } };
     return model;
   }
 
-  addOutline(model) {
-    const mat = this.outlineMat || new THREE.MeshBasicMaterial({ color: 0x141c3a, side: THREE.BackSide });
-    this.outlineMat = mat;
+  outlineMaterial() {
+    if (this.outlineMat) return this.outlineMat;
+    const mat = new THREE.MeshBasicMaterial({ color: 0x141c3a, side: THREE.BackSide });
     mat.onBeforeCompile = (sh) => {
       sh.vertexShader = sh.vertexShader.replace(
         '#include <project_vertex>',
@@ -436,6 +450,11 @@ export class Player {
       );
     };
     mat.customProgramCacheKey = () => 'outline';
+    this.outlineMat = mat;
+    return mat;
+  }
+  addOutline(model) {
+    const mat = this.outlineMaterial();
     const hulls = [];
     model.traverse((o) => {
       if (o.isMesh && !o.userData.hull && !o.userData.noHull) hulls.push(o);
@@ -454,17 +473,26 @@ export class Player {
   }
 
   addRim(m) {
+    const masked = m.vertexColors;
     m.userData.rim = { value: new THREE.Color(0xbfe4ff) };
     m.userData.rimStrength = { value: 0.9 };
     m.onBeforeCompile = (sh) => {
       sh.uniforms.rimColor = m.userData.rim;
       sh.uniforms.rimStrength = m.userData.rimStrength;
+      let f = sh.fragmentShader;
+      if (masked) {
+        f = f
+          .replace('#include <color_fragment>', 'diffuseColor.rgb = mix(vColor.rgb, diffuse, vColor.a);')
+          .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n roughnessFactor = mix(mix(0.2, 0.38, smoothstep(0.02, 0.4, dot(vColor.rgb, vec3(0.333)))), roughnessFactor, vColor.a);')
+          .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\n metalnessFactor = mix(0.3, metalnessFactor, vColor.a);');
+      }
       sh.uniforms.hurtK = this.hurtU;
-      sh.fragmentShader = 'uniform vec3 rimColor;\nuniform float rimStrength;\nuniform float hurtK;\n' + sh.fragmentShader.replace(
+      sh.fragmentShader = 'uniform vec3 rimColor;\nuniform float rimStrength;\nuniform float hurtK;\n' + f.replace(
         '#include <emissivemap_fragment>',
-        '#include <emissivemap_fragment>\n float rimF = pow(1.0 - saturate(dot(normal, normalize(vViewPosition))), 3.0);\n totalEmissiveRadiance += rimColor * rimF * rimStrength * (1.0 - hurtK) + vec3(0.32, 0.02, 0.0) * hurtK;\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.85, 0.08, 0.06), hurtK * 0.6);',
+        `#include <emissivemap_fragment>\n${masked ? ' totalEmissiveRadiance *= vColor.a;\n' : ''} float rimF = pow(1.0 - saturate(dot(normal, normalize(vViewPosition))), 3.0);\n totalEmissiveRadiance += rimColor * rimF * rimStrength * (1.0 - hurtK) + vec3(0.32, 0.02, 0.0) * hurtK;\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.85, 0.08, 0.06), hurtK * 0.6);`,
       );
     };
+    m.customProgramCacheKey = () => (masked ? 'rimMasked' : 'rim');
   }
 
   hurt() {
@@ -501,7 +529,7 @@ export class Player {
     }
     this.acc = [];
     this.accSpin = [];
-    this.antenna.visible = !['cap', 'propeller', 'crown'].includes(id);
+    this.antennaOff = ['cap', 'propeller', 'crown'].includes(id);
     if (!id || !ACC[id]) return;
     const r = this.rig;
     const mk = (parent) => {
@@ -960,7 +988,8 @@ export class Player {
   update(dt, world, t) {
     if (this.hurtT > 0) this.hurtT = Math.max(0, this.hurtT - dt);
     this.hurtU.value = this.hurtT > 0 ? Math.sin((this.hurtT / 0.4) * Math.PI) : 0;
-    this.sv += (1 - this.sy) * 260 * dt;
+    const rest = this.grounded || this.dead ? 1 : 1 + THREE.MathUtils.clamp(this.vel.y * 0.007, -0.05, 0.09);
+    this.sv += (rest - this.sy) * 260 * dt;
     this.sv *= Math.exp(-14 * dt);
     this.sy += this.sv * dt;
     const s = Math.max(0.5, Math.min(1.5, this.sy));
@@ -1025,17 +1054,96 @@ export class Player {
     this.fadeT += dt;
     const k = this.fadeDur > 0 ? Math.min(1, this.fadeT / this.fadeDur) : 1;
     lerpPose(this.prevPose, tp, k * k * (3 - 2 * k), this.pose);
-    const p = this.pose;
-    const r = this.rig;
-    r.hips.position.y = 0.5 + p.bob;
-    r.body.rotation.set(p.tilt, p.twist, p.roll);
-    r.head.rotation.set(p.hx, p.hy, p.hz);
-    for (const key of LIMBS) r[key].rotation.set(p[key][0], 0, p[key][1]);
+    this.codeW += ((CODE_POSES.has(this.cur) ? 1 : 0) - this.codeW) * (1 - Math.exp(-dt / 0.06));
+    this.driveClips(dt);
+    for (const [bone, p, q, sc] of this.bones) {
+      bone.position.copy(p);
+      bone.quaternion.copy(q);
+      bone.scale.copy(sc);
+    }
+    this.mixer.update(dt);
+    for (const [bone, p, q, sc] of this.bones) {
+      p.copy(bone.position);
+      q.copy(bone.quaternion);
+      sc.copy(bone.scale);
+    }
+    if (this.codeW > 0.001) this.applyCodePose(this.codeW);
+    this.applySprings(dt);
     if (this.accSpin) for (const sp of this.accSpin) sp.rotation.y += dt * (6 + Math.hypot(this.vel.x, this.vel.z) * 2);
     this.blinkT -= dt;
     const blink = this.blinkT < 0.12 && this.blinkT > 0;
     if (this.blinkT <= 0) this.blinkT = 2.2 + Math.random() * 2.5;
-    for (const e of this.eyes) e.scale.y = blink ? 0.015 : 0.095;
+    if (blink) for (const e of this.eyes) e.scale.y *= 0.15;
+  }
+
+  driveClips(dt) {
+    const sp = Math.hypot(this.vel.x, this.vel.z);
+    const g = this.grounded || this.climbT > 0;
+    if (!g && this.wasGroundedVis && this.vel.y > 2) {
+      this.takeoffT = 0;
+      this.clips.jump.reset();
+    }
+    if (g && !this.wasGroundedVis && this.airVis > 0.18) {
+      this.landT = 0;
+      this.clips.land.reset();
+      this.spr.antX.v += 7 * Math.min(1, this.airVis);
+    }
+    this.airVis = g ? 0 : this.airVis + dt;
+    this.wasGroundedVis = g;
+    this.takeoffT += dt;
+    this.landT += dt;
+    const T = { idle: 0, run: 0, jump: 0, air: 0, land: 0, fall: 0 };
+    if (!g && this.airVis > 0.04) {
+      if (this.takeoffT < 0.3) T.jump = 1;
+      else if (this.vel.y < -11 && this.airVis > 0.45) T.fall = 1;
+      else T.air = 1;
+    } else {
+      const run = THREE.MathUtils.smoothstep(sp, 0.4, 3.2);
+      const land = 1 - THREE.MathUtils.smoothstep(this.landT, 0.14, 0.34);
+      T.land = land;
+      T.run = run * (1 - land);
+      T.idle = (1 - run) * (1 - land);
+      this.clips.run.timeScale = Math.max(0.75, Math.min(1.6, sp / 7.2)) * 1.0186;
+    }
+    const k = 1 - Math.exp(-dt / 0.05);
+    const keep = 1 - this.codeW;
+    for (const n in T) {
+      this.clipW[n] += (T[n] - this.clipW[n]) * k;
+      this.clips[n].setEffectiveWeight(this.clipW[n] * keep);
+    }
+  }
+
+  applyCodePose(w) {
+    const p = this.pose;
+    const r = this.rig;
+    r.hips.position.y += (0.5 + p.bob - r.hips.position.y) * w;
+    const set = (b, x, y, z) => b.quaternion.slerp(_q.setFromEuler(_e.set(x, y, z)), w);
+    set(r.body, p.tilt, p.twist, p.roll);
+    set(r.head, p.hx, p.hy, p.hz);
+    for (const key of LIMBS) set(r[key], p[key][0], 0, p[key][1]);
+  }
+
+  applySprings(dt) {
+    const s = this.spr;
+    const v = this.vel;
+    const r = this.rig;
+    const inv = 1 / Math.max(dt, 1e-3);
+    const fwd = ((v.x - this.prevVel.x) * Math.sin(this.face) + (v.z - this.prevVel.z) * Math.cos(this.face)) * inv;
+    this.prevVel.copy(v);
+    let yaw = this.face - (this.prevFace ?? this.face);
+    yaw = Math.atan2(Math.sin(yaw), Math.cos(yaw)) * inv;
+    this.prevFace = this.face;
+    const live = this.grounded && !this.dead && this.codeW < 0.5 ? 1 : 0.35;
+    const acc = damp(s.acc, THREE.MathUtils.clamp(fwd, -40, 40) * live, 0.06, dt);
+    const lean = damp(s.lean, THREE.MathUtils.clamp(acc * 0.007, -0.2, 0.2), 0.09, dt);
+    const roll = damp(s.roll, THREE.MathUtils.clamp(-yaw * 0.045, -0.22, 0.22) * live, 0.1, dt);
+    r.body.rotateX(lean);
+    r.body.rotateZ(roll);
+    r.head.rotateX(damp(s.headX, -lean * 0.6 + THREE.MathUtils.clamp(v.y * 0.006, -0.08, 0.08), 0.14, dt));
+    r.head.rotateY(damp(s.headY, THREE.MathUtils.clamp(-yaw * 0.06, -0.3, 0.3), 0.12, dt));
+    this.antenna.rotateX(wobble(s.antX, THREE.MathUtils.clamp(-acc * 0.012 - v.y * 0.012, -0.5, 0.5), 170, 7, dt));
+    this.antenna.rotateZ(wobble(s.antZ, roll * 1.6, 170, 7, dt));
+    if (this.antennaOff) this.antenna.scale.setScalar(1e-4);
   }
 
   syncVisual() {
