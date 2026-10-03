@@ -559,6 +559,7 @@ export class Player {
     this.launched = false;
     this.padFlight = false;
     this.liftFlight = false;
+    this.bonked = false;
     this.settleT = 0;
     this.emote = null;
     this.sy = 1;
@@ -628,7 +629,7 @@ export class Player {
     if (this.grounded) rate = ice ? (hasInput ? 2.2 : 0.7) : hasInput ? 14 : 32;
     else if (this.padFlight) {
       rate = 11.2;
-      const steer = this.liftFlight ? 0 : 1.5;
+      const steer = this.liftFlight ? 0 : world.def && world.def.padSteer !== undefined ? world.def.padSteer : 1.5;
       tx = this.aim.x + wx * steer;
       tz = this.aim.z + wz * steer;
     } else rate = hasInput ? 11.2 : 0.8;
@@ -771,6 +772,10 @@ export class Player {
           p.x += hit.nx * hit.d;
           p.z += hit.nz * hit.d;
           const vn = v.x * hit.nx + v.z * hit.nz;
+          if (vn < -2 && !wasGrounded && !this.bonked && top > p.y + 0.3 && c.style !== 'curb' && c.style !== 'fence') {
+            this.bonked = true;
+            this.push('wall', { x: p.x - hit.nx * R, y: top, z: p.z - hit.nz * R });
+          }
           if (vn < 0) {
             v.x -= hit.nx * vn;
             v.z -= hit.nz * vn;
@@ -834,6 +839,7 @@ export class Player {
       const g = this.ground;
       this.groundY = p.y;
       this.padFlight = false;
+      this.bonked = false;
       if (this.liftFlight) {
         this.liftFlight = false;
         this.settleT = SETTLE;

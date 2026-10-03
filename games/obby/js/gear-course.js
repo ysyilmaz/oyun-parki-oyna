@@ -1,5 +1,6 @@
 const CART_L = 3.6;
 const CART_GAP = 0.15;
+const FLUSH = -0.2;
 
 let gid = 0;
 let sid = 0;
@@ -69,12 +70,12 @@ function twoSwitch(b, { gapLen = 5, lockA = 'cyan', lockB = 'violet' } = {}) {
   const pz = b.z;
   const hub = b.ahead(1.2, 6, 6, { style: 'ground', sy: 1.4 });
   b.arc(px, py, pz, hub.x, hub.y, hub.z + 3, 1);
-  const L = b.block({ x: hub.x - 6.2, y: hub.y + 0.4, z: hub.z + 0.6, sx: 3.6, sz: 3.6, sy: 1, color: b.col() });
+  const L = b.block({ x: hub.x - 6.1, y: hub.y + 0.4, z: hub.z + 0.6, sx: 5, sz: 3.6, sy: 1, color: b.col() });
   const ia = ++sid;
   const edge = hub.z - 3;
   b.add({ t: 'switch', id: ia, lock: lockA, x: L.x, y: L.y, z: L.z, rail: rail([[L.x + 1, L.y, L.z], [L.x + 1.7, L.y, L.z], [hub.x - 3, hub.y, L.z], [hub.x - 0.7, hub.y, L.z - 0.5], [hub.x - 0.7, hub.y, edge + 0.6]]) });
   b.coin(L.x, L.y + 1.1, L.z);
-  const R = b.block({ x: hub.x + 6.2, y: hub.y + 0.4, z: hub.z + 0.6, sx: 3.6, sz: 3.6, sy: 1, color: b.col() });
+  const R = b.block({ x: hub.x + 6.1, y: hub.y + 0.4, z: hub.z + 0.6, sx: 5, sz: 3.6, sy: 1, color: b.col() });
   const ib = ++sid;
   b.add({ t: 'switch', id: ib, lock: lockB, x: R.x, y: R.y, z: R.z, rail: rail([[R.x - 1, R.y, R.z], [R.x - 1.7, R.y, R.z], [hub.x + 3, hub.y, R.z], [hub.x + 0.7, hub.y, R.z - 0.5], [hub.x + 0.7, hub.y, edge + 0.6]]) });
   b.coin(R.x, R.y + 1.1, R.z);
@@ -162,6 +163,10 @@ export function gearSeq(h) {
   const { steps, bridge, sideMovers, pad, barBeam, island, conveyor, stairs, tramps, disks, spinPlanks } = h;
   gid = 0;
   sid = 0;
+  const flushExit = (fn) => (b) => {
+    fn(b);
+    if (b.nextGap === null || b.nextGap === undefined || b.nextGap > 0) b.nextGap = FLUSH;
+  };
   return [
     (b) => {
       gid = 0;
@@ -189,9 +194,15 @@ export function gearSeq(h) {
       conveyor(b, { len: 12, w: 4.5, dir: 'x-', speed: 1.0, curb: true, gap: 1.2 });
     },
     (b) => beats(b, { n: 6, size: 3.6, gap: 1.9, mode: 'clock', sets: 3, cycle: 6, solid: 2.5, ew: 6.5 }),
-    (b) => island(b, { size: 8, gap: 1.4 }),
+    (b) => {
+      island(b, { size: 8, gap: 1.4 });
+      b.nextGap = FLUSH;
+    },
     (b) => disks(b, { n: 2, r: 3.4, spin: 0.35, gap: 2 }),
-    (b) => barBeam(b, { len: 14, w: 2.2, bars: 2, speed: 1.0, floor: 4, push: true }),
+    (b) => {
+      barBeam(b, { len: 14, w: 2.2, bars: 2, speed: 1.0, floor: 4, push: true });
+      b.nextGap = FLUSH;
+    },
     (b) => {
       stairs(b, { n: 3, rise: 0.6, size: 4.4, gap: 1 });
       b.nextGap = 1;
@@ -200,7 +211,10 @@ export function gearSeq(h) {
       freezeButton(b, 1);
       beats(b, { n: 6, size: 3.6, gap: 1.9, mode: 'clock', ew: 6.5 });
     },
-    (b) => pad(b, { rise: 6, gap: 1.4 }),
+    (b) => {
+      pad(b, { rise: 6, gap: 1.4 });
+      b.nextGap = FLUSH;
+    },
     (b) => {
       b.meta[b.stage] = { camBack: 1.5 };
       const path = cart(b, { len: 70, speed: 5, finale: true, coinsHigh: true, shape: (t, L) => [Math.sin(t * Math.PI * 1.5) * 9 * Math.min(1, (1 - t) * 6), -t * L] });
@@ -210,7 +224,7 @@ export function gearSeq(h) {
       b.nextGap = 0;
       b.finishDy = 0;
     },
-  ];
+  ].map((fn, i, all) => (i < all.length - 1 ? flushExit(fn) : fn));
 }
 
 export function gearExtra(h) {

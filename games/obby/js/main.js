@@ -552,6 +552,12 @@ function handlePlayerEvents() {
     } else if (e.type === 'ledge') {
       emitDust(x, y, z, 6, 1.6, dustColor(), 0.5, 0.8);
       logEvent('ledge');
+    } else if (e.type === 'wall') {
+      G.cause = { t: G.runTime, at: new THREE.Vector3(e.data.x, e.data.y, e.data.z) };
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2;
+        stars.emit(e.data.x, e.data.y - 0.3, e.data.z, Math.cos(a) * 2.5, 1.5 + Math.random() * 2, Math.sin(a) * 2.5, { life: 0.9, size: 0.5, size1: 0.08, color: 0xfff2a0, drag: 3 });
+      }
     } else if (e.type === 'wind') {
       G.cause = { t: G.runTime, at: new THREE.Vector3(e.data.x, e.data.y + 0.6, e.data.z) };
     } else if (e.type === 'lift' || e.type === 'liftOff') {
@@ -1076,6 +1082,9 @@ function autoCamera(dt, look) {
   if (G.lookIdle < 1.8) return;
   const gc = G.player.ground;
   if (gc && gc.shape === 'cyl' && !gc.power) return;
+  const pp = G.player.pos;
+  const rh = G.world.rhythm;
+  if (rh && rh.switches.some((sw) => !sw.pressed && Math.hypot(sw.s.x - pp.x, sw.s.z - pp.z) < 5 && Math.abs(sw.s.y - pp.y) < 2)) return;
   const cps = G.course.cps;
   const a = cps[G.cp];
   const b = cps[Math.min(G.cp + 1, cps.length - 1)];

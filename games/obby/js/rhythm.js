@@ -11,7 +11,8 @@ const RAIL_STEP = 0.75;
 const RAIL_SPEED = 14;
 const EXTEND = 0.6;
 const DOOR_T = 0.55;
-const FREEZE_T = 12;
+const FREEZE_T = 15;
+const FREEZE_WARN = 3;
 const BODY = [0x24409a, 0x30285e, 0x1c4e72];
 const _m = new THREE.Matrix4();
 const _p = new THREE.Vector3();
@@ -23,6 +24,41 @@ const smooth = (a, b, x) => {
   const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);
 };
+
+function timerMaterial(top) {
+  return new THREE.ShaderMaterial({
+    uniforms: { left: { value: 1 }, color: { value: new THREE.Color(0xa77aff) } },
+    transparent: true,
+    depthWrite: false,
+    depthTest: !top,
+    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: [
+      'uniform float left;',
+      'uniform vec3 color;',
+      'varying vec2 vUv;',
+      'void main() {',
+      '  vec2 q = vUv - 0.5;',
+      '  float r = length(q);',
+      '  float a = fract(atan(q.x, q.y) / 6.2831853 + 1.0);',
+      '  float aa = fwidth(r) * 1.5;',
+      '  float ring = smoothstep(0.25 - aa, 0.25, r) * (1.0 - smoothstep(0.46, 0.46 + aa, r));',
+      '  float edge = smoothstep(0.22 - aa, 0.22, r) * (1.0 - smoothstep(0.5 - aa, 0.5, r));',
+      '  float on = step(1.0 - left, a);',
+      '  float hand = (1.0 - smoothstep(0.02, 0.02 + aa, abs(dot(q, vec2(cos(6.2831853 * (1.0 - left)), -sin(6.2831853 * (1.0 - left))))))) * step(r, 0.22) * step(0.0, dot(q, vec2(sin(6.2831853 * (1.0 - left)), cos(6.2831853 * (1.0 - left)))));',
+      '  float dot0 = 1.0 - smoothstep(0.045, 0.045 + aa, r);',
+      '  vec3 track = vec3(0.10, 0.07, 0.18);',
+      '  vec3 c = mix(track, color, on * ring);',
+      '  c = mix(c, vec3(1.0), (edge - ring) * 0.9);',
+      '  float face = step(r, 0.22) * 0.85;',
+      '  c = mix(c, vec3(0.97, 0.95, 1.0), face * (1.0 - hand - dot0));',
+      '  c = mix(c, color * 0.8, max(hand, dot0) * step(r, 0.22));',
+      '  float alpha = max(edge, max(face, max(hand, dot0) * step(r, 0.22)));',
+      '  if (alpha < 0.01) discard;',
+      '  gl_FragColor = vec4(c, alpha);',
+      '}',
+    ].join(String.fromCharCode(10)),
+  });
+}
 
 export function makeRhythm(world) {
   const specs = world.course.specs.filter((s) => ['beatgroup', 'beat', 'switch', 'freeze', 'door', 'xbridge'].includes(s.t));
@@ -292,7 +328,44 @@ class Rhythm {
     this.bridgeM = T(new THREE.MeshStandardMaterial({ color: 0x9a6a48, roughness: 0.5, vertexColors: true }));
     this.bridge = inst(brG, this.bridgeM, this.bridges.length, true);
     this.bridgeEdge = inst(T(new THREE.BoxGeometry(1, 0.06, 1)), T(new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false })), this.bridges.length * 2 + dl + this.freezeTiles.length);
+    this.timerM = T(timerMaterial(false));
+    this.timerTopM = T(timerMaterial(true));
+    const plane = T(new THREE.PlaneGeometry(1, 1));
+    this.timerFloor = new THREE.Mesh(plane, this.timerM);
+    this.timerFloor.rotation.x = -Math.PI / 2;
+    this.timerFloor.frustumCulled = false;
+    this.timerFloor.visible = false;
+    this.timerFloor.renderOrder = 5;
+    this.timerTop = new THREE.Mesh(plane, this.timerTopM);
+    this.timerTop.frustumCulled = false;
+    this.timerTop.visible = false;
+    this.timerTop.renderOrder = 20;
+    g.add(this.timerFloor, this.timerTop);
     this.placeStatic();
+  }
+
+  updateTimer(t) {
+    const g = this.groups.find((x) => x.hasFreeze && (x.armed || x.frozen > 0));
+    const sw = g && this.switches.find((x) => x.freeze && x.target === g.id);
+    const p = this.w.player;
+    const show = !!(g && sw && this.on(sw.view));
+    this.timerFloor.visible = show;
+    this.timerTop.visible = show && !!p && !p.dead;
+    if (!show) return;
+    const left = g.armed ? 1 : g.frozen / FREEZE_T;
+    const warn = !g.armed && g.frozen < FREEZE_WARN;
+    const pulse = warn ? 0.75 + 0.25 * Math.cos(g.frozen * Math.PI * 4) : 1;
+    for (const m of [this.timerM, this.timerTopM]) {
+      m.uniforms.left.value = left;
+      m.uniforms.color.value.set(warn ? 0xff4a00 : 0x8a3cff).multiplyScalar(pulse);
+    }
+    this.timerFloor.position.set(sw.s.x, sw.s.y + 0.14, sw.s.z);
+    this.timerFloor.scale.setScalar(3.4);
+    if (this.timerTop.visible) {
+      this.timerTop.position.set(p.pos.x, p.pos.y + 2.9 + 0.05 * Math.sin(t * 3), p.pos.z);
+      if (this.w.camera) this.timerTop.quaternion.copy(this.w.camera.quaternion);
+      this.timerTop.scale.setScalar(warn ? 1.9 + 0.15 * Math.max(0, Math.cos(g.frozen * Math.PI * 2)) : 1.7);
+    }
   }
 
   gearGeo(r, teeth) {
@@ -387,7 +460,7 @@ class Rhythm {
       if (g.frozen > 0) {
         const before = Math.ceil(g.frozen);
         g.frozen -= dt;
-        if (Math.ceil(g.frozen) !== before && g.frozen < 3 && g.frozen > 0) this.sound('freezeTick', g);
+        if (Math.ceil(g.frozen) !== before && g.frozen > 0) this.sound(g.frozen < FREEZE_WARN ? 'freezeTick' : 'freezeTock', g);
         if (g.frozen <= 0) {
           g.frozen = 0;
           this.sound('thaw', g);
@@ -488,7 +561,10 @@ class Rhythm {
     } else if (kind === 'door') {
       a.noise(0.5, { vol: 0.05, freq: 900, type: 'bandpass' });
       a.tone(784, 0.4, { type: 'triangle', vol: 0.07, when: 0.1 });
-    } else if (kind === 'freezeTick') a.tone(1175, 0.06, { type: 'triangle', vol: 0.05 });
+    } else if (kind === 'freezeTick') {
+      a.tone(1397, 0.07, { type: 'triangle', vol: 0.07 });
+      a.tone(1397, 0.05, { type: 'triangle', vol: 0.05, when: 0.25 });
+    } else if (kind === 'freezeTock') a.tone(880, 0.05, { type: 'triangle', vol: 0.04 });
     else if (kind === 'freezeOn') [784, 988, 1175, 1568].forEach((f, i) => a.tone(f, 0.3, { type: 'triangle', vol: 0.07, when: i * 0.07 }));
     else if (kind === 'thaw') a.tone(587, 0.3, { type: 'triangle', vol: 0.06, slide: 0.7 });
   }
@@ -668,6 +744,7 @@ class Rhythm {
         this.bridgeEdge.setColorAt(i * 2 + j, _c);
       });
     });
+    this.updateTimer(t);
     const nF = this.bridges.length * 2 + li;
     this.freezeTiles.forEach((tl, i) => {
       const g = tl.g;

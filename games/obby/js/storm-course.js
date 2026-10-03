@@ -14,6 +14,22 @@ function landLip(b, L, w) {
   b.block({ x: L.x, y: L.y + LIP, z: L.z - L.sz / 2 + 0.15, sx: w, sz: 0.3, sy: LIP, style: 'curb' });
 }
 
+function row(b, n, { sx, sz = sx, gap, first = gap, zig = 0, rise = 0, move = null, style = 'block', sy = 1.2 }) {
+  for (let i = 0; i < n; i++) {
+    const px = b.x;
+    const py = b.y;
+    const pz = b.z;
+    const g = i === 0 ? first : gap;
+    const lead = first <= 0 ? 0 : -zig;
+    const dx = move ? 0 : i === 0 ? lead : (i % 2 ? zig : -zig) * (i === 1 && !lead ? 1 : 2);
+    const o = { dy: rise, dx, style, color: b.col(), sy };
+    if (move) o.move = { x: move.amp, speed: move.speed, phase: i * Math.PI };
+    const s = b.ahead(g, sx, sz, o);
+    if (g > 0.5) b.arc(px, py, pz, s.x, s.y, s.z + sz / 2, 1);
+    b.coin(s.x, s.y + 1.1, s.z);
+  }
+}
+
 function since(b, n0) {
   return b.specs.slice(n0).filter((s) => s.t === 'block' || s.t === 'disk');
 }
@@ -116,7 +132,7 @@ function finaleLift(b, rise, at) {
 }
 
 export function stormSeq(h) {
-  const { steps, bridge, sideMovers, pad, barBeam, island, conveyor, stairs } = h;
+  const { steps, bridge, sideMovers, pad, barBeam, island, conveyor } = h;
   return [
     (b) => {
       steps(b, { n: 2, size: 4.6, gap: 1.2, rise: 0.3, zig: 0.8, gate: true });
@@ -130,7 +146,7 @@ export function stormSeq(h) {
       lipLane(b, 5, 12, 1.4, { vx: -2.2, lip: true });
       flush(b);
     },
-    (b) => bridge(b, { len: 12, w: 3 }),
+    (b) => bridge(b, { len: 12, w: 5 }),
     (b) => {
       const n0 = b.specs.length;
       steps(b, { n: 3, size: 5, gap: 1.8, rise: 0, zig: 0 });
@@ -176,7 +192,10 @@ export function stormSeq(h) {
       flush(b);
     },
     (b) => {
-      stairs(b, { n: 3, rise: 0.6, size: 4.4, gap: 1 });
+      for (let i = 0; i < 3; i++) {
+        const p = b.ahead(FLUSH, 4.4, 4.4, { dy: 0.6, dx: i === 0 ? 0 : i % 2 ? 1.6 : -1.6, color: b.col(), sy: 1.2 });
+        if (i % 2 === 0) b.coin(p.x, p.y + 1.1, p.z);
+      }
       flush(b);
     },
     (b) => {
@@ -184,14 +203,15 @@ export function stormSeq(h) {
       flush(b);
     },
     (b) => {
+      row(b, 1, { sx: 4.4, sz: 3, gap: FLUSH });
       const n0 = b.specs.length;
-      sideMovers(b, { n: 3, amp: 2.2, speed: 0.9, size: 3.8, gap: 2 });
+      row(b, 3, { sx: 3.8, sz: 6, gap: 1.6, move: { amp: 2.2, speed: 0.9 }, style: 'mover', sy: 0.8 });
       windLane(b, since(b, n0), { vz: -1 });
       flush(b);
     },
     (b) => {
       const n0 = b.specs.length;
-      steps(b, { n: 4, size: 3.6, gap: 3, rise: 0, zig: 1 });
+      row(b, 4, { sx: 3.6, sz: 4.4, gap: 3, first: FLUSH, zig: 1 });
       windLane(b, since(b, n0), { vz: -1.5, over: 1 });
       flush(b);
     },
@@ -206,7 +226,7 @@ export function stormSeq(h) {
     },
     (b) => {
       const n0 = b.specs.length;
-      steps(b, { n: 4, size: 3.8, gap: 2, rise: 0, zig: 0.4 });
+      row(b, 4, { sx: 3.8, gap: 2, first: FLUSH, zig: 0.4 });
       since(b, n0).forEach((s, i) => windLane(b, [s], { vx: i < 2 ? -1.6 : 1.6, over: 0 }));
       flush(b);
     },

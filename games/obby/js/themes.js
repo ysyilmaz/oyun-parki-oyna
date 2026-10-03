@@ -308,6 +308,7 @@ export const WORLDS = [
     secret: { at: 15, side: 1, trail: 'nota', coins: 30 },
     diskFails: 3,
     hint: false,
+    padSteer: 0,
     bonusGap: 1.8,
     padJump: true,
     beat: 0xfff1d6,
