@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import * as TX from './textures.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { jitter, vertexGradient } from './geo.js';
-import { skyMaterial, waterMaterial, lavaMaterial, gridMaterial, canopyMaterial, nearFade } from './shaders.js';
+import { skyMaterial, waterMaterial, lavaMaterial, gridMaterial, canopyMaterial, nearFade, cloudMaterial } from './shaders.js';
 import { stormSky, cloudSeaMaterial, buildStorm } from './storm.js';
 import { mechanismMaterial, buildClockwork } from './clockwork.js';
 
@@ -59,7 +59,7 @@ export function buildDecor(world) {
 
   const floorGeo = T(new THREE.PlaneGeometry(4000, 4000, 1, 1));
   floorGeo.rotateX(-Math.PI / 2);
-  const BELOW = { water: waterMaterial, lava: lavaMaterial, void: gridMaterial, canopy: () => canopyMaterial(def.belowColors), cloudsea: () => cloudSeaMaterial(def.belowColors), mechanism: () => mechanismMaterial(def.belowColors) };
+  const BELOW = { water: () => waterMaterial(def), lava: lavaMaterial, void: gridMaterial, canopy: () => canopyMaterial(def.belowColors), cloudsea: () => cloudSeaMaterial(def.belowColors), mechanism: () => mechanismMaterial(def.belowColors) };
   const floorM = T(BELOW[def.below]());
   const floor = new THREE.Mesh(floorGeo, floorM);
   floor.position.set(0, def.belowY, (b.minZ + b.maxZ) / 2);
@@ -173,8 +173,10 @@ export function buildDecor(world) {
       const side = rnd() > 0.5 ? 1 : -1;
       const low = rnd() < 0.35;
       const x = side * R(14, 150);
-      const y = low ? def.belowY + R(3, 10) : yAt(z) + R(-6, 45);
+      let y = low ? def.belowY + R(3, 10) : yAt(z) + R(-6, 45);
       const s = R(2.5, 6);
+      const hit = solid.find((sp) => Math.hypot(sp.x - x, sp.z - z) < s * 3 + 9 && Math.abs(sp.y - y) < s + 6);
+      if (hit) y = hit.y - 12 - s;
       const k = 5 + Math.floor(rnd() * 4);
       for (let j = 0; j < k; j++) {
         pieces.push({ x: x + (j - k / 2) * s * 0.7 + R(-1, 1), y: y + R(-0.4, 0.8) * s * 0.3, z: z + R(-1, 1) * s * 0.6, r: s * R(0.6, 1.15) * (1 - Math.abs(j - k / 2) / k) });
@@ -182,14 +184,16 @@ export function buildDecor(world) {
     }
     const cg = T(new THREE.IcosahedronGeometry(1, 2));
     const cm = T(
-      new THREE.MeshStandardMaterial({
-        color: cl.color,
-        emissive: cl.emissive,
-        emissiveIntensity: cl.glow,
-        roughness: 1,
-        transparent: cl.opacity < 1,
-        opacity: cl.opacity,
-      }),
+      cl.lit !== undefined
+        ? cloudMaterial(def, cl.lit, cl.shade, cl.opacity)
+        : new THREE.MeshStandardMaterial({
+            color: cl.color,
+            emissive: cl.emissive,
+            emissiveIntensity: cl.glow,
+            roughness: 1,
+            transparent: cl.opacity < 1,
+            opacity: cl.opacity,
+          }),
     );
     const clouds = new THREE.InstancedMesh(cg, cm, pieces.length);
     pieces.forEach((p, i) => setInst(clouds, i, p.x, p.y, p.z, p.r, p.r * 0.62, p.r));

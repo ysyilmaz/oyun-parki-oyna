@@ -36,15 +36,17 @@ export function skyMaterial(def) {
       sunSize: { value: s.sunSize },
       sunK: { value: s.sunK ?? 1 },
       curve: { value: s.curve ?? 0.55 },
+      hazeColor: { value: new THREE.Color(def.fog.color) },
+      hazeK: { value: s.haze ?? 0 },
       time: { value: 0 },
     },
     vertexShader: `
       varying vec3 vDir;
-      void main(){ vDir = position; vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = p.xyww; }
+      void main(){ vDir = position; vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = vec4(p.xy, p.w * 0.9999, p.w); }
     `,
     fragmentShader: `
       uniform vec3 topColor; uniform vec3 horizonColor; uniform vec3 bottomColor; uniform vec3 sunColor; uniform vec3 sunDir;
-      uniform float stars; uniform float sunSize; uniform float time; uniform float sunK; uniform float curve;
+      uniform float stars; uniform float sunSize; uniform float time; uniform float sunK; uniform float curve; uniform vec3 hazeColor; uniform float hazeK;
       varying vec3 vDir;
       ${NOISE}
       float hash13(vec3 p3){ p3 = fract(p3 * 0.1031); p3 += dot(p3, p3.zyx + 31.32); return fract((p3.x + p3.y) * p3.z); }
@@ -54,6 +56,7 @@ export function skyMaterial(def) {
         vec3 col;
         if (h > 0.0) col = mix(horizonColor, topColor, pow(smoothstep(0.0, 1.0, h), curve));
         else col = mix(horizonColor, bottomColor, pow(smoothstep(0.0, 0.6, -h), 0.7));
+        col = mix(col, hazeColor, exp(-max(h, 0.0) * 16.0) * hazeK);
         float s = max(dot(d, sunDir), 0.0);
         col += sunColor * (pow(s, 1400.0 / sunSize) * 14.0 + pow(s, 180.0 / sunSize) * 1.2 + pow(s, 10.0) * 0.28 + pow(s, 2.5) * 0.1) * sunK;
         if (stars > 0.0) {
@@ -84,33 +87,59 @@ export function skyMaterial(def) {
   });
 }
 
-export function waterMaterial() {
+export function waterMaterial(def) {
+  const sky = def.sky;
   return new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.merge([
       THREE.UniformsLib.fog,
       {
         time: { value: 0 },
-        deep: { value: new THREE.Color(0x0550a0) },
-        shallow: { value: new THREE.Color(0x14b0dc) },
-        sunDir: { value: new THREE.Vector3(0.45, 0.62, 0.35).normalize() },
+        deep: { value: new THREE.Color(0x125a92) },
+        shallow: { value: new THREE.Color(0x2f9cc2) },
+        skyRefl: { value: new THREE.Color(def.fog.color) },
+        skyTop: { value: new THREE.Color(sky.top) },
+        sunColor: { value: new THREE.Color(sky.sun) },
+        sunDir: { value: new THREE.Vector3(...sky.sunDir).normalize() },
       },
     ]),
     vertexShader: WORLD_VERT,
     fragmentShader: `
       #include <common>
       #include <fog_pars_fragment>
-      uniform float time; uniform vec3 deep; uniform vec3 shallow; uniform vec3 sunDir;
+      uniform float time; uniform vec3 deep; uniform vec3 shallow; uniform vec3 skyRefl; uniform vec3 skyTop; uniform vec3 sunColor; uniform vec3 sunDir;
       varying vec3 vW;
       ${NOISE}
+      float crest = 0.0;
+      vec2 wave(vec2 p, vec2 dir, float len, float amp, float speed){
+        float k = 6.2831853 / len;
+        float ph = dot(p, dir) * k + time * speed;
+        crest += amp * sin(ph);
+        return dir * (k * amp * cos(ph));
+      }
       void main(){
-        vec2 p = vW.xz * 0.035;
-        float n = fbm2(p + vec2(time * 0.02, time * 0.013));
-        float n2 = fbm3(p * 3.1 - vec2(time * 0.05, -time * 0.03));
-        vec3 col = mix(deep, shallow, smoothstep(0.35, 0.75, n));
-        float ripple = abs(sin((n2 * 9.0 + time * 0.6)));
-        col += vec3(0.8, 0.95, 1.0) * smoothstep(0.93, 1.0, ripple) * 0.35;
-        float sp = vnoise(vW.xz * 0.9 + vec2(time * 0.8, time * 0.5)) * 0.55 + vnoise(vW.xz * 2.1 - vec2(time * 0.6, 0.0)) * 0.45;
-        col += vec3(1.0) * pow(max(sp - 0.6, 0.0) * 3.2, 5.0) * 2.5;
+        vec3 toCam = cameraPosition - vW;
+        float dist = length(toCam);
+        vec3 V = toCam / dist;
+        float detail = 1.0 - smoothstep(30.0, 140.0, dist);
+        vec2 p = vW.xz;
+        float swell = fbm3(p * 0.014 + vec2(time * 0.006, time * 0.004));
+        vec2 q = p + (vec2(swell, vnoise(p * 0.03 + 4.7)) - 0.5) * 14.0;
+        vec2 g = wave(q, vec2(0.80, 0.60), 11.0, 0.22, 0.9);
+        g += wave(q, vec2(-0.45, 0.89), 6.5, 0.12, 1.2);
+        g += wave(q, vec2(0.97, -0.24), 3.7, 0.05, 1.7) * detail;
+        g += wave(q, vec2(-0.71, -0.70), 2.4, 0.025, 2.1) * detail;
+        g *= 0.15 + 0.85 * detail;
+        vec3 N = normalize(vec3(-g.x, 1.0, -g.y));
+        float ndv = max(dot(N, V), 0.0);
+        float F = 0.03 + 0.97 * pow(1.0 - ndv, 5.0);
+        vec3 body = mix(deep, shallow, smoothstep(0.3, 0.75, swell) * 0.8 + 0.2 * (1.0 - V.y));
+        vec3 refl = mix(skyRefl, skyTop, clamp(reflect(-V, N).y * 1.6, 0.0, 1.0) * 0.55);
+        vec3 col = mix(body, refl, F);
+        col += skyRefl * smoothstep(0.18, 0.36, crest) * 0.05 * detail;
+        vec3 R = reflect(-V, N);
+        float glint = pow(max(dot(R, sunDir), 0.0), 380.0);
+        float mask = smoothstep(0.45, 0.8, vnoise(p * 0.16 + vec2(time * 0.12, -time * 0.08)));
+        col += sunColor * glint * mask * 3.0 * (0.25 + 0.75 * detail);
         gl_FragColor = vec4(col, 1.0);
         #include <fog_fragment>
         #include <tonemapping_fragment>
@@ -118,6 +147,63 @@ export function waterMaterial() {
       }
     `,
     fog: true,
+  });
+}
+
+export function cloudMaterial(def, lit, shade, opacity) {
+  return new THREE.ShaderMaterial({
+    uniforms: THREE.UniformsUtils.merge([
+      THREE.UniformsLib.fog,
+      {
+        lit: { value: new THREE.Color(lit) },
+        shade: { value: new THREE.Color(shade) },
+        sunDir: { value: new THREE.Vector3(...def.sky.sunDir).normalize() },
+        opacity: { value: opacity },
+      },
+    ]),
+    vertexShader: `
+      #include <common>
+      #include <fog_pars_vertex>
+      varying vec3 vW;
+      varying vec3 vN;
+      void main(){
+        mat4 m = modelMatrix * instanceMatrix;
+        vec4 wp = m * vec4(position, 1.0);
+        vW = wp.xyz;
+        vN = normalize(transpose(inverse(mat3(m))) * normal);
+        vec4 mvPosition = viewMatrix * wp;
+        gl_Position = projectionMatrix * mvPosition;
+        #include <fog_vertex>
+      }
+    `,
+    fragmentShader: `
+      #include <common>
+      #include <fog_pars_fragment>
+      uniform vec3 lit; uniform vec3 shade; uniform vec3 sunDir; uniform float opacity;
+      varying vec3 vW;
+      varying vec3 vN;
+      void main(){
+        vec3 N = normalize(vN);
+        vec3 toCam = cameraPosition - vW;
+        float dist = length(toCam);
+        vec3 V = toCam / dist;
+        float near = smoothstep(7.0, 16.0, dist);
+        float dither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+        if (near < 0.999 && dither > near) discard;
+        float sun = dot(N, sunDir) * 0.5 + 0.5;
+        float up = N.y * 0.5 + 0.5;
+        float k = smoothstep(0.15, 0.95, sun * 0.55 + up * 0.45);
+        vec3 col = mix(shade, lit, k);
+        float rim = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+        col += lit * rim * 0.22 * smoothstep(0.3, 0.9, sun);
+        gl_FragColor = vec4(col, opacity);
+        #include <fog_fragment>
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }
+    `,
+    fog: true,
+    transparent: opacity < 1,
   });
 }
 
@@ -198,7 +284,56 @@ export function gridMaterial() {
   });
 }
 
-export function beamMaterial(color) {
+export function beamMaterial(color, soft = false) {
+  if (soft) {
+    return new THREE.ShaderMaterial({
+      uniforms: { color: { value: new THREE.Color(color) }, time: { value: 0 }, strength: { value: 0 }, radius: { value: 1 }, hero: { value: new THREE.Vector4(0, -1e4, 0, 0) } },
+      vertexShader: `
+        varying vec2 vUv; varying vec3 vW; varying vec3 vN; varying vec2 vAxis;
+        void main(){
+          vUv = uv;
+          vAxis = vec2(modelMatrix[3][0], modelMatrix[3][2]);
+          vec4 wp = modelMatrix * vec4(position, 1.0);
+          vW = wp.xyz;
+          vN = normalize(mat3(modelMatrix) * normal);
+          gl_Position = projectionMatrix * viewMatrix * wp;
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 color; uniform float time; uniform float strength; uniform float radius; uniform vec4 hero;
+        varying vec2 vUv; varying vec3 vW; varying vec3 vN; varying vec2 vAxis;
+        ${NOISE}
+        void main(){
+          vec3 V = normalize(cameraPosition - vW);
+          vec2 n2 = normalize(vN.xz);
+          vec2 v2 = normalize(V.xz);
+          float face = abs(dot(n2, v2));
+          float core = face * face * face;
+          float h = vUv.y;
+          float vert = smoothstep(0.0, 0.04, h) * pow(1.0 - h, 2.2);
+          float inside = smoothstep(radius * 1.1, radius * 3.2, length(cameraPosition.xz - vAxis));
+          float near = smoothstep(2.0, 7.0, length(cameraPosition - vW));
+          float flow = 0.7 + 0.3 * vnoise(vec2((n2.x * 1.3 + n2.y * 0.7) * 2.2, h * 9.0 - time * 1.4));
+          float a = core * vert * inside * near * flow * strength;
+          vec3 hc = hero.xyz + vec3(0.0, 0.9, 0.0);
+          vec3 hd = hc - cameraPosition;
+          float hl = length(hd);
+          hd /= hl;
+          vec3 rv = vW - cameraPosition;
+          float rs = dot(rv, hd);
+          float sight = (1.0 - smoothstep(0.8, 2.0, length(rv - hd * rs))) * (1.0 - smoothstep(hl + 0.4, hl + 1.6, rs));
+          float band = 1.0 - smoothstep(0.6, 2.8, abs(vW.y - hc.y));
+          a *= 1.0 - hero.w * max(sight, band * step(rs, hl + 1.6));
+          gl_FragColor = vec4(color * a * 0.42, 1.0);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      fog: false,
+    });
+  }
   return new THREE.ShaderMaterial({
     uniforms: { color: { value: new THREE.Color(color) }, time: { value: 0 }, strength: { value: 0 }, hero: { value: new THREE.Vector4(0, -1e4, 0, 0) } },
     vertexShader: `varying vec2 vUv; varying vec3 vW; void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
