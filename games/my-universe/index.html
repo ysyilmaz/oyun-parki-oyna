@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#2f8cff">
+<title>MyUniverse</title>
+<link rel="stylesheet" href="style.css">
+<script type="importmap">{"imports":{"three":"../../vendor/three/build/three.module.js","three/addons/":"../../vendor/three/jsm/"}}</script>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-coin" viewBox="0 0 48 48"><circle cx="24" cy="24" r="21" fill="#f7a400"/><circle cx="24" cy="24" r="17" fill="#ffcf2e"/><path d="M24 12l3.6 7.4 8.1 1.2-5.9 5.7 1.4 8.1L24 30.6l-7.2 3.8 1.4-8.1-5.9-5.7 8.1-1.2z" fill="#ffe98a" stroke="#e58f00" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+    <symbol id="i-xp" viewBox="0 0 48 48"><path d="M27 4L10 27h12l-3 17 19-25H26z" fill="#ffd22e" stroke="#8a5a00" stroke-width="3" stroke-linejoin="round"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 48 48"><circle cx="24" cy="26" r="18" fill="#fff" stroke="#27324a" stroke-width="5"/><path d="M24 16v11l7 4" stroke="#27324a" stroke-width="5" fill="none" stroke-linecap="round"/><rect x="19" y="3" width="10" height="6" rx="3" fill="#27324a"/></symbol>
+    <symbol id="i-skull" viewBox="0 0 48 48"><path d="M24 5C13 5 6 12.5 6 22c0 6 3 10 7 12v6c0 1.7 1.3 3 3 3h16c1.7 0 3-1.3 3-3v-6c4-2 7-6 7-12C42 12.5 35 5 24 5z" fill="#fff" stroke="#27324a" stroke-width="4"/><circle cx="17" cy="23" r="5" fill="#27324a"/><circle cx="31" cy="23" r="5" fill="#27324a"/><path d="M21 38v-5M27 38v-5" stroke="#27324a" stroke-width="3" stroke-linecap="round"/></symbol>
+    <symbol id="i-sound" viewBox="0 0 48 48"><path d="M8 18h8l11-9v30l-11-9H8z" fill="#fff" stroke="#27324a" stroke-width="4" stroke-linejoin="round"/><path d="M33 17c3 4 3 10 0 14M38 12c6 7 6 17 0 24" stroke="#27324a" stroke-width="4" fill="none" stroke-linecap="round"/></symbol>
+    <symbol id="i-mute" viewBox="0 0 48 48"><path d="M8 18h8l11-9v30l-11-9H8z" fill="#fff" stroke="#27324a" stroke-width="4" stroke-linejoin="round"/><path d="M33 18l10 12M43 18L33 30" stroke="#e8334a" stroke-width="5" stroke-linecap="round"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 48 48"><rect x="11" y="9" width="10" height="30" rx="4" fill="#fff" stroke="#27324a" stroke-width="4"/><rect x="27" y="9" width="10" height="30" rx="4" fill="#fff" stroke="#27324a" stroke-width="4"/></symbol>
+    <symbol id="i-play" viewBox="0 0 48 48"><path d="M15 8.5c0-2 2.2-3.2 3.9-2.1l21.2 15.5c1.4 1 1.4 3.2 0 4.2L18.9 41.6C17.2 42.7 15 41.5 15 39.5z" fill="#fff" stroke="#1d5c14" stroke-width="3" stroke-linejoin="round"/></symbol>
+    <symbol id="i-shop" viewBox="0 0 48 48"><path d="M7 19h34l-3 21c-.3 1.7-1.7 3-3.4 3H13.4c-1.7 0-3.1-1.3-3.4-3z" fill="#fff" stroke="#5a3a00" stroke-width="4" stroke-linejoin="round"/><path d="M16 19v-4a8 8 0 0116 0v4" stroke="#5a3a00" stroke-width="4" fill="none"/><circle cx="24" cy="31" r="4" fill="#ffc21a"/></symbol>
+    <symbol id="i-back" viewBox="0 0 48 48"><path d="M28 10L14 24l14 14" stroke="#27324a" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-retry" viewBox="0 0 48 48"><path d="M37 24a13 13 0 11-4-9.4" stroke="#27324a" stroke-width="6" fill="none" stroke-linecap="round"/><path d="M36 6v11H25" stroke="#27324a" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-home" viewBox="0 0 48 48"><path d="M7 23L24 8l17 15v17c0 1.7-1.3 3-3 3H10c-1.7 0-3-1.3-3-3z" fill="#fff" stroke="#27324a" stroke-width="4" stroke-linejoin="round"/><rect x="19" y="28" width="10" height="15" rx="2" fill="#27324a"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 48 48"><rect x="9" y="21" width="30" height="22" rx="5" fill="#ffd34d" stroke="#5a3a00" stroke-width="4"/><path d="M15 21v-5a9 9 0 0118 0v5" stroke="#5a3a00" stroke-width="5" fill="none"/><circle cx="24" cy="31" r="3.5" fill="#5a3a00"/></symbol>
+    <symbol id="i-star" viewBox="0 0 48 48"><path d="M24 4l6 12.6 13.8 2-10 9.7 2.4 13.7L24 35.5l-12.2 6.5 2.4-13.7-10-9.7 13.8-2z" stroke-linejoin="round"/></symbol>
+    <symbol id="i-next" viewBox="0 0 48 48"><path d="M10 24h26M26 12l12 12-12 12" stroke="#fff" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-up" viewBox="0 0 48 48"><path d="M24 8L8 26h10v14h12V26h10z" fill="#fff" stroke="#27324a" stroke-width="3.5" stroke-linejoin="round"/></symbol>
+    <symbol id="i-hand" viewBox="0 0 48 48"><path d="M14 26V12a3 3 0 016 0v10M20 20V9a3 3 0 016 0v11M26 20v-8a3 3 0 016 0v10M32 22v-4a3 3 0 016 0v12c0 8-5 14-13 14h-3c-4 0-7-2-9-5l-6-9a3 3 0 015-3l4 4" fill="#fff" stroke="#27324a" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/></symbol>
+    <symbol id="i-trophy" viewBox="0 0 48 48"><path d="M14 6h20v12a10 10 0 01-20 0z" fill="#ffcf2e" stroke="#8a5a00" stroke-width="3.5"/><path d="M14 10H7c0 7 3 10 7 10M34 10h7c0 7-3 10-7 10" stroke="#8a5a00" stroke-width="3.5" fill="none"/><path d="M20 28h8v7h-8zM14 36h20v6H14z" fill="#ffcf2e" stroke="#8a5a00" stroke-width="3.5" stroke-linejoin="round"/></symbol>
+    <symbol id="i-flame" viewBox="0 0 48 48"><path d="M24 4c2 8 10 11 10 22a10 10 0 01-20 0c0-5 3-7 4-11 2 3 3 5 3 8 3-3 3-11 3-19z" fill="#ff7a1a" stroke="#8a2a00" stroke-width="3" stroke-linejoin="round"/><path d="M24 24c1 4 4 5 4 9a4 4 0 01-8 0c0-3 2-4 4-9z" fill="#ffd84a"/></symbol>
+  </defs>
+</svg>
+
+<div id="loading" class="screen show">
+  <div class="load-box">
+    <div class="logo small"><span class="l1">My</span><span class="l2">Universe</span></div>
+    <div class="load-bar"><i id="loadFill"></i></div>
+    <div class="load-text">Yükleniyor…</div>
+  </div>
+</div>
+
+<div id="hud" class="hidden">
+  <div class="hud-left">
+    <div class="lvl-box">
+      <div class="lvl-badge"><small>Sv</small><b id="hudLevel">1</b></div>
+      <div class="xp-wrap"><div class="xp-bar"><i id="xpFill"></i></div><div class="xp-text"><svg class="ico"><use href="#i-xp"/></svg><span id="xpText">0/80</span></div></div>
+    </div>
+    <div class="pill coin-pill"><svg class="ico"><use href="#i-coin"/></svg><b id="hudCoins">0</b></div>
+  </div>
+  <div class="hud-center hidden" id="gameHud">
+    <div class="stage-label">Bölüm <b id="stageNum">1</b> · <span id="gameName">Isınma</span></div>
+    <div class="stage-bar"><i id="stageFill"></i></div>
+    <div class="pill small-pill time-pill"><svg class="ico"><use href="#i-clock"/></svg><b id="hudTime">0:00</b></div>
+  </div>
+  <div class="hud-right">
+    <button class="round-btn" data-action="mute" aria-label="Ses"><svg><use href="#i-sound"/></svg></button>
+    <button class="round-btn" data-action="pause" aria-label="Durdur"><svg><use href="#i-pause"/></svg></button>
+  </div>
+  <div class="lava-warn hidden" id="lavaWarn"><svg class="ico"><use href="#i-flame"/></svg><span>LAV YAKIN!</span><svg class="ico"><use href="#i-flame"/></svg></div>
+  <div class="prompt hidden" id="prompt"><kbd id="promptKey">E</kbd><span id="promptText"></span></div>
+  <div class="hint" id="hint"></div>
+</div>
+
+<div id="toast"></div>
+<div id="banner"><span id="bannerText"></span></div>
+<div id="levelup"><div class="lu-box"><svg><use href="#i-xp"/></svg><span>Seviye <b id="luLevel">2</b>!</span></div></div>
+
+<div id="touch" class="hidden">
+  <div class="joy" id="joy"><div class="joy-knob" id="joyKnob"></div></div>
+  <button class="act-btn" id="actBtn" aria-label="Etkileşim"><svg><use href="#i-hand"/></svg></button>
+  <button class="jump-btn" id="jumpBtn" aria-label="Zıpla"><svg><use href="#i-up"/></svg></button>
+</div>
+
+<div id="pause" class="screen modal">
+  <div class="card">
+    <h2>Mola</h2>
+    <button class="btn btn-green btn-big" data-action="resume"><svg><use href="#i-play"/></svg><span>Devam</span></button>
+    <div class="row">
+      <button class="btn btn-white" data-action="restart" id="pauseRestart"><svg><use href="#i-retry"/></svg><span>Baştan</span></button>
+      <button class="btn btn-white" data-action="hub" id="pauseHub"><svg><use href="#i-home"/></svg><span>Meydan</span></button>
+    </div>
+    <div class="keys-help">
+      <div class="key arrows"><div class="kb-row"><kbd>↑</kbd></div><div class="kb-row"><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd></div></div>
+      <div class="key wasd"><div class="kb-row"><kbd>W</kbd></div><div class="kb-row"><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></div></div>
+      <div class="key space"><kbd class="wide">␣</kbd><svg class="ico"><use href="#i-up"/></svg></div>
+      <div class="key"><kbd>E</kbd><svg class="ico"><use href="#i-hand"/></svg></div>
+    </div>
+    <a class="chip-btn back-link" href="../../index.html"><svg><use href="#i-back"/></svg><span>Oyunlar</span></a>
+  </div>
+</div>
+
+<div id="results" class="screen modal">
+  <div class="card result-card">
+    <div class="result-trophy"><svg><use href="#i-trophy"/></svg></div>
+    <h2 id="resTitle">Bölüm Bitti!</h2>
+    <div class="res-rows">
+      <div class="res-row gain"><svg class="ico"><use href="#i-xp"/></svg><span>XP</span><b id="resXp">+0</b></div>
+      <div class="res-row gain"><svg class="ico"><use href="#i-coin"/></svg><span>Altın</span><b id="resCoins">+0</b></div>
+      <div class="res-row"><svg class="ico"><use href="#i-clock"/></svg><span>Süre</span><b id="resTime">0:00</b></div>
+      <div class="res-row"><svg class="ico"><use href="#i-skull"/></svg><span>Düşme</span><b id="resDeaths">0</b></div>
+    </div>
+    <div class="record hidden" id="resRecord">Yeni rekor!</div>
+    <div class="row">
+      <button class="btn btn-white" data-action="restart"><svg><use href="#i-retry"/></svg><span>Tekrar</span></button>
+      <button class="btn btn-white" data-action="hub"><svg><use href="#i-home"/></svg><span>Meydan</span></button>
+    </div>
+    <button class="btn btn-green btn-big hidden" id="nextStageBtn" data-action="next"><span>Sonraki bölüm</span><svg><use href="#i-next"/></svg></button>
+  </div>
+</div>
+
+<div id="stages" class="screen modal">
+  <div class="card stages-card">
+    <h2 id="stagesTitle">Lav Parkuru</h2>
+    <div class="stage-cards" id="stageCards"></div>
+    <button class="btn btn-white" data-action="closeStages"><svg><use href="#i-back"/></svg><span>Vazgeç</span></button>
+  </div>
+</div>
+
+<div id="unlock" class="screen modal">
+  <div class="card unlock-card">
+    <div class="unlock-ico"><svg><use href="#i-lock"/></svg></div>
+    <h2 id="unlockTitle">Kilitli</h2>
+    <p id="unlockText"></p>
+    <button class="btn btn-yellow btn-big hidden" id="unlockBuy"><span>Aç</span><svg class="ico"><use href="#i-coin"/></svg><span id="unlockPrice">0</span></button>
+    <button class="btn btn-white" data-action="closeUnlock"><span>Tamam</span></button>
+  </div>
+</div>
+
+<div id="shop" class="screen">
+  <div class="shop-top">
+    <button class="round-btn big-x" data-action="closeShop" aria-label="Geri"><svg><use href="#i-back"/></svg></button>
+    <div class="shop-title">Mağaza</div>
+    <div class="wallet pill"><svg class="ico"><use href="#i-coin"/></svg><b id="shopCoins">0</b></div>
+  </div>
+  <div class="shop-panel">
+    <div class="tabs">
+      <button class="tab active" data-tab="color">Renk</button>
+      <button class="tab" data-tab="hat">Şapka</button>
+      <button class="tab" data-tab="cape">Pelerin</button>
+      <button class="tab" data-tab="pet">Evcil</button>
+      <button class="tab" data-tab="portal">Portal</button>
+    </div>
+    <div class="shop-grid" id="shopGrid"></div>
+    <button class="btn btn-green btn-big shop-buy" id="shopBuy"><span>Seç</span></button>
+  </div>
+</div>
+
+<div id="fade"></div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
